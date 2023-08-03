@@ -1,3 +1,9 @@
+## Project Related Gitignores
+# Generated output files
+Data/
+
+## Python Default Gitignores start here
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
