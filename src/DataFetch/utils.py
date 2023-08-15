@@ -12,3 +12,12 @@ def auto_fit_columns(sheet: worksheet):
             except:
                 pass
         sheet.column_dimensions[column].width = max_length
+
+def standardize_ticker(ticker):
+    # Accept only upper characters
+    ticker = ticker.upper()
+    # Some tickers have multiple keys separated by comma
+    ticker = ticker.split(', ')
+    # Take the longest ticker only
+    ticker = max(ticker, key=len)
+    return ticker
