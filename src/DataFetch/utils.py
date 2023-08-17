@@ -1,5 +1,12 @@
 from openpyxl import Workbook, worksheet
 
+report_periods = {
+    '3 Aylık': 1,
+    '6 Aylık': 2,
+    '9 Aylık': 3,
+    'Yıllık': 4
+}
+
 # Auto fit the columns of a worksheet to its data
 def auto_fit_columns(sheet: worksheet):
     for column_cells in sheet.columns:
@@ -21,3 +28,7 @@ def standardize_ticker(ticker):
     # Take the longest ticker only
     ticker = max(ticker, key=len)
     return ticker
+
+def to_quarter(year, period: str):
+    quarter_info = str(year) + 'Q' + str(report_periods[period])
+    return quarter_info

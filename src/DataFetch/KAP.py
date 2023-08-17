@@ -12,7 +12,7 @@ from openpyxl import Workbook
 import pandas as pd
 
 # Internal imports
-from .utils import auto_fit_columns, standardize_ticker
+from .utils import auto_fit_columns, standardize_ticker, to_quarter
 
 # Constants related to the KAP website
 # KAP Links
@@ -20,14 +20,6 @@ KAP_SITE = "https://www.kap.org.tr"
 COMPANY_LIST_SITE = "https://www.kap.org.tr/tr/bist-sirketler"
 FILTER_SITE = "https://www.kap.org.tr/tr/FilterSgbf/FILTERSGBF"
 DISCLOSURE_SITE = "https://www.kap.org.tr/tr/Bildirim"
-
-# TODO: Make this generic
-# KAP HTML attributes
-KAP_FILTER_NAME = {
-    'balance_sheet': 'tbl_general_role_210',
-    'income_statement': 'tbl_general_role_310',
-    'cash_flow_statement': 'tbl_general_role_520'
-}
 
 # Sleep time between each request, in seconds
 SLEEP_TIME = 1.0
@@ -90,6 +82,9 @@ class KAP:
         # Return the object if initialized
         if self.company_info is not None:
             return self.company_info
+        # TODO: Try to get it from the excel file
+
+        # If nothing works, retrieve it from the website
         return self.save_company_info()
     
     # Update the company info file according to the changes to the internal company_info object
@@ -125,16 +120,15 @@ class KAP:
         # Else, return the added MKK ID
         return self.__add_mkk_id(ticker)
 
-    def __save_report(self, report, ticker):
+    def __save_report(self, report, ticker, year, month):
         # Define the save path
-        save_path = self.companies_path / 'Companies' / ticker
+        save_path = self.__get_save_path(ticker)
         save_path.mkdir(parents=True, exist_ok=True)
 
         # Parse the HTML file
         soup = BeautifulSoup(report, 'html.parser')
         financial_tables = soup('table', class_='financial-table')
         pd_reports = []
-        report_date = None
         table_idx = 1
         for financial_table in financial_tables:
             # Get to the body part
@@ -166,20 +160,15 @@ class KAP:
             header_prev = header_prev.strip()
             columns.append(header_prev)
             # Save the report date if not done already
-            if report_date is None:
-                report_date = header_now
             
             # Get the pandas variable for the report
             pd_reports.append(self.__table_2_pandas(financial_table, columns))
             table_idx += 1
 
         # Save the financials to an Excel file
-        with pd.ExcelWriter(save_path / ('Financials_'+ticker+'_'+report_date+'.xlsx')) as writer:
+        with pd.ExcelWriter(save_path / ('Financials_'+ticker+'_'+to_quarter(year, month)+'.xlsx')) as writer:
             for report in pd_reports:
                 report.to_excel(writer, sheet_name=report.columns[0])
-        
-            
-
 
     def __table_2_pandas(self, report: Tag, report_columns: list):
         # Get the table values
@@ -227,16 +216,43 @@ class KAP:
         company_filter_site = FILTER_SITE + '/' + mkk_id + '/FR/365'
         reports_text = self.r.get(company_filter_site)
         reports_json = json.loads(reports_text.text)
-        with open(self.companies_path / 'Report_Sample.html', 'w', encoding='utf-8') as f:
-            f.write(reports_text.text)
+        with open(self.companies_path / 'Report_Filter_Sample.json', 'w', encoding='utf-8') as f:
+            json.dump(reports_json, f, ensure_ascii=False, indent='\t')
         # Filter the financial reports to get indices
         reports_financial = [report for report in reports_json if report['basic']['disclosureCategory'] == 'FR']
         report_indices = [report['basic']['disclosureIndex'] for report in reports_financial]
+        report_years = [report['basic']['year'] for report in reports_financial]
+        report_months = [report['basic']['period'] for report in reports_financial]
+
 
         # Get the financial reports as pandas objects
-        for idx in report_indices:
-            report = self.r.get(DISCLOSURE_SITE + '/' + str(idx)).text
-            report = self.__save_report(report, ticker)
+        for idx, year, month in zip(report_indices, report_years, report_months):
+            if not self.__report_exists(ticker, year, month):
+                report = self.r.get(DISCLOSURE_SITE + '/' + str(idx)).text
+                report = self.__save_report(report, ticker, year, month)
+                print('Report', to_quarter(year, month), 'for', ticker, 'saved.')
+            else:
+                print('Report', to_quarter(year, month), 'for', ticker, 'already exists.')
+
+    def get_company_financials(self, ticker: str, update=True):
+        # Standardize the ticker input
+        ticker = standardize_ticker(ticker)
+
+        # Update the data
+        company_path = self.__get_save_path(ticker)
+        # If the update option is chosen, update the data
+        if update:
+            self.save_company_financials(ticker)
+        # Check if the data exists. if not, update the financials
+        elif not (company_path.is_dir() and len(list(company_path.glob('*.xlsx'))) > 0):
+            self.save_company_financials(ticker)
+        # Get the data from the file path
+        financial_tables = {}
+        for financial_xl in company_path.glob('*.xlsx'):
+            financial_period = financial_xl.name[-11:-5]
+            financial_tables[financial_period] = pd.read_excel(financial_xl, sheet_name=None)
+            print(financial_tables.keys())
+        print(financial_tables[financial_period])
 
     @staticmethod
     def __html_2_dict(html_result: bs4.element.Tag):
@@ -258,5 +274,14 @@ class KAP:
 
         return company_dict
 
+    def __report_exists(self, ticker, year, month) -> bool:
+        report_path = self.__get_save_path(ticker)
+        # The path should exist
+        if not report_path.is_dir():
+            return False
+        # The path should have the file
+        report_file = report_path / ('Financials_'+ticker+'_'+to_quarter(year, month)+'.xlsx')
+        return report_file.is_file()
 
-
+    def __get_save_path(self, ticker):
+        return self.companies_path / 'Companies' / ticker
