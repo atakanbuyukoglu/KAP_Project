@@ -9,12 +9,9 @@ kap = KAP(data_path=data_path)
 companies = kap.get_company_info()
 for ticker in companies.index:
     print(ticker, 'start')
-    """
     if (data_path / 'Companies' / ticker).is_dir():
         pass
     else:
         kap.save_company_financials(ticker)
-    """
-    kap.get_mkk_id(ticker)
     print(ticker, 'end')
 

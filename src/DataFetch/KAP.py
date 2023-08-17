@@ -234,7 +234,7 @@ class KAP:
             else:
                 print('Report', to_quarter(year, month), 'for', ticker, 'already exists.')
 
-    def get_company_financials(self, ticker: str, update=True):
+    def get_company_financials(self, ticker: str, update=False):
         # Standardize the ticker input
         ticker = standardize_ticker(ticker)
 
@@ -251,8 +251,8 @@ class KAP:
         for financial_xl in company_path.glob('*.xlsx'):
             financial_period = financial_xl.name[-11:-5]
             financial_tables[financial_period] = pd.read_excel(financial_xl, sheet_name=None)
-            print(financial_tables.keys())
-        print(financial_tables[financial_period])
+
+        return financial_tables
 
     @staticmethod
     def __html_2_dict(html_result: bs4.element.Tag):
