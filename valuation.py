@@ -6,4 +6,4 @@ data_path.mkdir(parents=True, exist_ok=True)
 
 kchol = Company('kchol', data_path)
 
-print(kchol.get_cash_flow_statement())
+print(kchol.get_cash())

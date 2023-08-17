@@ -129,7 +129,7 @@ class KAP:
         soup = BeautifulSoup(report, 'html.parser')
         financial_tables = soup('table', class_='financial-table')
         pd_reports = []
-        table_idx = 1
+        report_idx = 1
         for financial_table in financial_tables:
             # Get to the body part
             financial_table = financial_table.tbody
@@ -144,7 +144,8 @@ class KAP:
                 continue
             financial_table_name = str(financial_table_name.find(class_='content-tr').string)
             financial_table_name = financial_table_name.strip()
-            financial_table_name = 'Table ' + str(table_idx)
+            financial_table_name = 'Table ' + str(report_idx)
+            report_idx += 1
             columns.append(financial_table_name)
             # Add the date headers
             financial_table_info = financial_table_tr[0]
@@ -163,12 +164,14 @@ class KAP:
             
             # Get the pandas variable for the report
             pd_reports.append(self.__table_2_pandas(financial_table, columns))
-            table_idx += 1
 
         # Save the financials to an Excel file
         with pd.ExcelWriter(save_path / ('Financials_'+ticker+'_'+to_quarter(year, month)+'.xlsx')) as writer:
+            report_idx = 1
             for report in pd_reports:
-                report.to_excel(writer, sheet_name=report.columns[0])
+                financial_table_name = 'Table ' + str(report_idx)
+                report.to_excel(writer, sheet_name=financial_table_name)
+                report_idx += 1
 
     def __table_2_pandas(self, report: Tag, report_columns: list):
         # Get the table values
@@ -195,6 +198,7 @@ class KAP:
                 # Add the table row
                 pd_balance_sheet.append(pd_element)
         pd_balance_sheet = pd.DataFrame(pd_balance_sheet, columns=report_columns)
+        pd_balance_sheet.set_index(report_columns[0], inplace=True)
         # pd_balance_sheet.to_excel(self.companies_path /  'Balance_Sheet.xlsx', sheet_name='Balance Sheet')
 
         #print([c.name for c in balance_sheet.children])
