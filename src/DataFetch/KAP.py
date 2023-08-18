@@ -82,8 +82,12 @@ class KAP:
         # Return the object if initialized
         if self.company_info is not None:
             return self.company_info
-        # TODO: Try to get it from the excel file
-
+        # Try to get it from the excel file
+        company_info_path = self.companies_path / 'Company_Info.xlsx'
+        if company_info_path.is_file():
+            self.company_info = pd.read_excel(company_info_path)
+            self.company_info.set_index('TICKER', inplace=True)
+            return self.company_info
         # If nothing works, retrieve it from the website
         return self.save_company_info()
     
@@ -115,10 +119,42 @@ class KAP:
         
         # If the MKK ID is already added, return it
         mkk_id_set = self.company_info.loc[ticker, 'MKK ID']
-        if mkk_id_set is not None:
+        if not pd.isna(mkk_id_set):
             return mkk_id_set
         # Else, return the added MKK ID
         return self.__add_mkk_id(ticker)
+
+    def __add_share_count(self, ticker: str):
+        # Get the share count from the KAP website
+        url = self.company_info.loc[ticker, 'LINK'].replace('ozet', 'genel')
+        resp = self.r.get(url=url)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        share_count_tag = soup('div', string=' Ödenmiş/Çıkarılmış Sermaye ')[0]
+        share_count_tag = share_count_tag.parent.next_sibling.next_sibling
+        share_count = float(share_count_tag.contents[1].string)
+        # Update the info
+        self.company_info.loc[ticker, 'SHARE COUNT'] = share_count
+        # Update the company info file with the new information
+        self.__update_company_info()
+        return share_count
+
+    def get_share_count(self, ticker: str):
+        # Standardize the parameter
+        ticker = standardize_ticker(ticker)
+
+        # Initialize company info if not initialized yet
+        self.get_company_info()
+
+        # Add the MKK ID header if not added yet
+        if 'SHARE COUNT' not in self.company_info.columns:
+            self.company_info['SHARE COUNT'] = None
+        
+        # If the MKK ID is already added, return it
+        share_count = self.company_info.loc[ticker, 'SHARE COUNT']
+        if not pd.isna(share_count):
+            return share_count
+        # Else, return the added MKK ID
+        return self.__add_share_count(ticker)
 
     def __save_report(self, report, ticker, year, month):
         # Define the save path

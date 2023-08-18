@@ -7,3 +7,6 @@ class KAPParser():
 
     def get_financials(self, ticker: str):
         return self.kap.get_company_financials(ticker)
+    
+    def get_share_count(self, ticker: str):
+        return self.kap.get_share_count(ticker)
