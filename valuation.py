@@ -4,6 +4,17 @@ from pathlib import Path
 data_path = Path(__file__).parent / "Data/"
 data_path.mkdir(parents=True, exist_ok=True)
 
-kchol = Company('kchol', data_path)
+company_name = 'kozal'
 
-print(kchol.get_cash())
+company = Company(company_name, data_path)
+multiplier = 10
+
+company_name_upper = company_name.upper()
+print(company_name_upper, 'Özkaynak Kontrol Oranı:', company.get_controlling_equity_ratio())
+print(company_name_upper, 'Net Kar Kontrol Oranı:', company.get_controlling_profit_ratio())
+print(company_name_upper, 'Hasılat (Son 12 Ay):', company.get_revenue(ttm=True))
+print(company_name_upper, 'Faaliyet Karı (Son 12 Ay, Diğer Hariç):', company.get_basic_operating_income(ttm=True))
+print(company_name_upper, 'Amortizasyon (Son 12 Ay):', company.get_amortization(ttm=True))
+print(company_name_upper, 'FAVÖK (Son 12 Ay):', company.get_ebitda(ttm=True))
+print(company_name_upper, 'Favök Değerlemesi (Çarpan:', multiplier, '):', company.ebitda_valuation(multiple=multiplier))
+
