@@ -4,7 +4,7 @@ from pathlib import Path
 data_path = Path(__file__).parent / "Data/"
 data_path.mkdir(parents=True, exist_ok=True)
 
-company_name = 'megap'
+company_name = 'ardyz'
 
 company = Company(company_name, data_path)
 multiplier = 10

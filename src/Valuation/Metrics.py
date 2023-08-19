@@ -82,8 +82,18 @@ class Company:
         return self.__get_balance_sheet_value('Finansal Yatırımlar')
     def get_accounts_receivable(self):
         return self.__get_balance_sheet_value('Ticari Alacaklar')
+    def get_cash_paid_expenses(self):
+        return self.__get_balance_sheet_value('Peşin Ödenmiş Giderler')
     def get_long_term_investments(self):
         return self.__get_balance_sheet_value('Finansal Yatırımlar', priority=1)
+    def get_tangible_assets(self):
+        return self.__get_balance_sheet_value('Maddi Duran Varlıklar')
+    def get_intangible_assets(self):
+        return self.__get_balance_sheet_value('Maddi Olmayan Duran Varlıklar')
+    def get_noncurrent_cash_paid_expenses(self):
+        return self.__get_balance_sheet_value('Peşin Ödenmiş Giderler', priority=1)
+    def get_use_right_assets(self):
+        return self.__get_balance_sheet_value('Kullanım Hakkı Varlıkları')
     def get_real_estate(self):
         return self.__get_balance_sheet_value('Yatırım Amaçlı Gayrimenkuller')
     def get_equity_investments(self):
@@ -194,10 +204,15 @@ class Company:
         control_multiplier = self.get_controlling_equity_ratio() if control_adjusted else 1.0
         working_capital = self.get_inventories() + self.get_accounts_receivable() - self.get_accounts_payable()
         return control_multiplier * working_capital
+    def get_noncurrent_operating_assets(self, control_adjusted = False):
+        control_multiplier = self.get_controlling_equity_ratio() if control_adjusted else 1.0
+        # Remove the assets related to the operations
+        assets = self.get_tangible_assets() + self.get_intangible_assets() + self.get_noncurrent_cash_paid_expenses() + self.get_use_right_assets()
+        return control_multiplier * assets
     def get_net_assets_for_ev(self, control_adjusted=False):
         control_multiplier = self.get_controlling_equity_ratio() if control_adjusted else 1.0
-        # TODO: Determine which noncurrent assets will be added
-        net_assets = self.get_current_assets() + self.get_real_estate() - self.get_total_debt() - self.get_working_capital()
+        # Remove the assets related to the operations
+        net_assets = self.get_equity() - self.get_noncurrent_operating_assets() - self.get_working_capital()
         return control_multiplier * net_assets
     
     def get_controlling_profit_ratio(self):
@@ -218,4 +233,11 @@ class Company:
     ### Valuation methods
     def ebitda_valuation(self, multiple=10, control_adjusted=True):
         return ((self.get_adjusted_ebitda(ttm=True, control_adjusted=control_adjusted) * multiple) + self.get_net_assets_for_ev(control_adjusted=control_adjusted)) / self.get_share_count()
-
+    def book_value_valuation(self, multiple=1.0):
+        return multiple * self.get_equity() / self.get_share_count()
+    def default_valuation(self, extra_multiple = 1.0):
+        ticker_info = self.parser.get_info(self.ticker)
+        if 'GAYRİMENKUL YATIRIM ORTAKLIĞI' in ticker_info.loc['NAME']:
+            return extra_multiple * self.book_value_valuation()
+        else:
+            return extra_multiple * self.ebitda_valuation()
