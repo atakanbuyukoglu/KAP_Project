@@ -4,6 +4,7 @@ import bs4
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 import re
+import time
 import json
 from pathlib import Path
 
@@ -12,7 +13,7 @@ from openpyxl import Workbook
 import pandas as pd
 
 # Internal imports
-from .utils import auto_fit_columns, standardize_ticker, to_quarter
+from .utils import auto_fit_columns, standardize_ticker, to_quarter, is_solo
 
 # Constants related to the KAP website
 # KAP Links
@@ -22,7 +23,7 @@ FILTER_SITE = "https://www.kap.org.tr/tr/FilterSgbf/FILTERSGBF"
 DISCLOSURE_SITE = "https://www.kap.org.tr/tr/Bildirim"
 
 # Sleep time between each request, in seconds
-SLEEP_TIME = 1.0
+SLEEP_TIME = 2.0
 
 # An interface for the KAP website
 # Try to keep as high level as possible
@@ -34,7 +35,7 @@ class KAP:
         self.company_info = None
  
     # Save the legal information about companies to the database about companies from the KAP website
-    def save_company_info(self) -> None:
+    def save_company_info(self):
         ### GETTING THE HTML RESULTS
 
         # Get the company list website response
@@ -156,13 +157,25 @@ class KAP:
         # Else, return the added MKK ID
         return self.__add_share_count(ticker)
 
-    def __save_report(self, report, ticker, year, month):
+    def __save_report(self, report, ticker, year, month, check_solo=False):
         # Define the save path
         save_path = self.__get_save_path(ticker)
         save_path.mkdir(parents=True, exist_ok=True)
 
         # Parse the HTML file
         soup = BeautifulSoup(report, 'html.parser')
+        # Find the multiple for the reports
+        report_info = soup('td', class_='financial-header-title', limit=2)
+        currency = report_info[0]
+        currency = currency.next_sibling.next_sibling
+        currency = str(currency.string)
+        currency_multiple = 10 ** currency.count('0')
+        if check_solo:
+            report_type = report_info[1]
+            report_type = report_type.next_sibling.next_sibling
+            report_type = str(report_type.string)
+            if report_type != 'Konsolide':
+                return False
         financial_tables = soup('table', class_='financial-table')
         pd_reports = []
         report_idx = 1
@@ -176,6 +189,7 @@ class KAP:
             financial_table_name = financial_table_tr[1]
             financial_table_name = financial_table_name.find(class_='taxonomy-field-title')
             # If the report name is not found, the table is not compatible
+            # TODO: Fix for the banks
             if financial_table_name is None:
                 continue
             financial_table_name = str(financial_table_name.find(class_='content-tr').string)
@@ -196,10 +210,8 @@ class KAP:
             header_prev = str(header_prev.contents[-1])
             header_prev = header_prev.strip()
             columns.append(header_prev)
-            # Save the report date if not done already
-            
             # Get the pandas variable for the report
-            pd_reports.append(self.__table_2_pandas(financial_table, columns))
+            pd_reports.append(self.__table_2_pandas(financial_table, columns, currency_multiple))
 
         # Save the financials to an Excel file
         with pd.ExcelWriter(save_path / ('Financials_'+ticker+'_'+to_quarter(year, month)+'.xlsx')) as writer:
@@ -208,8 +220,9 @@ class KAP:
                 financial_table_name = 'Table ' + str(report_idx)
                 report.to_excel(writer, sheet_name=financial_table_name)
                 report_idx += 1
+        return True
 
-    def __table_2_pandas(self, report: Tag, report_columns: list):
+    def __table_2_pandas(self, report: Tag, report_columns: list, multiple):
         # Get the table values
         pd_balance_sheet = []
         for element in report.children:
@@ -226,10 +239,12 @@ class KAP:
                 this_value = element.find(class_='col-order-class-4')
                 this_value = this_value.find(class_='monetary-field-default')
                 this_value = float(this_value['title']) if this_value is not None and this_value.has_attr('title') else 0.0
+                this_value *= multiple
                 pd_element.append(this_value)
                 prev_value = element.find(class_='col-order-class-5')
                 prev_value = prev_value.find(class_='monetary-field-default')
                 prev_value = float(prev_value['title']) if prev_value is not None and prev_value.has_attr('title') else 0.0
+                prev_value *= multiple
                 pd_element.append(prev_value)
                 # Add the table row
                 pd_balance_sheet.append(pd_element)
@@ -258,23 +273,59 @@ class KAP:
         reports_json = json.loads(reports_text.text)
         with open(self.companies_path / 'Report_Filter_Sample.json', 'w', encoding='utf-8') as f:
             json.dump(reports_json, f, ensure_ascii=False, indent='\t')
+        
         # Filter the financial reports to get indices
         reports_financial = [report for report in reports_json if report['basic']['disclosureCategory'] == 'FR']
         report_indices = [report['basic']['disclosureIndex'] for report in reports_financial]
         report_years = [report['basic']['year'] for report in reports_financial]
         report_months = [report['basic']['period'] for report in reports_financial]
 
+        # Filter the reports to filter out solo financials where consolidated is present
+        # Get the report periods
+        report_years = [report['basic']['year'] for report in reports_financial]
+        report_months = [report['basic']['period'] for report in reports_financial]
+        report_periods = [to_quarter(year, month) for year, month in zip(report_years, report_months)]
+        # Find the unique periods
+        first_indices = {}
+        periods_unique = [True] * len(report_periods)
+        for idx, period in enumerate(report_periods):
+            # First encounter
+            if period not in first_indices:
+                first_indices[period] = idx
+            # Duplicate encounter
+            else:
+                periods_unique[idx] = False
+                periods_unique[first_indices[period]] = False
+        try:
+            # Filter the solo periods out
+            reports_financial = [report for unique, report in zip(periods_unique, reports_financial) 
+                                if unique or not is_solo(report)]
+            solo_filtered = True
+            # Update other parts
+            report_indices = [report['basic']['disclosureIndex'] for report in reports_financial]
+            report_years = [report['basic']['year'] for report in reports_financial]
+            report_months = [report['basic']['period'] for report in reports_financial]
+        # Summary is not present in all reports
+        except KeyError:
+            # TODO: Handle this case
+            solo_filtered = False
 
         # Get the financial reports as pandas objects
-        for idx, year, month in zip(report_indices, report_years, report_months):
+        for idx, year, month, unique in zip(report_indices, report_years, report_months, periods_unique):
             if not self.__report_exists(ticker, year, month):
                 report = self.r.get(DISCLOSURE_SITE + '/' + str(idx)).text
-                report = self.__save_report(report, ticker, year, month)
-                print('Report', to_quarter(year, month), 'for', ticker, 'saved.')
+                # The case when the filtering is already done or there are no repetitions
+                if solo_filtered or unique:
+                    report_saved = self.__save_report(report, ticker, year, month)
+                # The case when the filtering needs to be done with saving the report
+                else:
+                    report_saved = self.__save_report(report, ticker, year, month, check_solo=True)
+                if report_saved:
+                    print('Report', to_quarter(year, month), 'for', ticker, 'saved.')
             else:
                 print('Report', to_quarter(year, month), 'for', ticker, 'already exists.')
 
-    def get_company_financials(self, ticker: str, update=False):
+    def get_company_financials(self, ticker: str, update=True):
         # Standardize the ticker input
         ticker = standardize_ticker(ticker)
 
@@ -325,3 +376,4 @@ class KAP:
 
     def __get_save_path(self, ticker):
         return self.companies_path / 'Companies' / ticker
+

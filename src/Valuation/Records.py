@@ -2,21 +2,60 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from itertools import islice
 from .Metrics import Company
+from ..DataFetch.RequestWrapper import Request
+from ..DataFetch.utils import standardize_ticker
 from yfinance import Ticker
 
 # TODO: Create an Excel file and update it given the company names with the valuations and prices
 class Records():
     
-    def __init__(self, file_path) -> None:
+    def __init__(self, file_path, initial_tickers=None, add_tickers=False, online=True) -> None:
         self.file_path = Path(file_path)
-        self.file = load_workbook(filename=self.file_path)
+        if self.file_path.is_file():
+            self.file = load_workbook(filename=self.file_path)
+        else:
+            self.file = Workbook()
+            self.file.save(self.file_path)
+        self.tickers = initial_tickers
 
-    def update(self):
-        self.update_prices(save=False)
-        self.update_intrinsic_values(save=False)
+        # Initialize the file if initial tickers are given
+        if add_tickers:
+            self.__set_values('Hisse', self.tickers, save=True)
+
+        self.online = online
+        self.yahoo_session = Request(sleep_time=1.0)
+
+    def update(self, all=True):
+        self.update_prices(all=all, save=False)
+        self.update_intrinsic_values(all=all, save=False)
         self.file.save(filename=self.file_path)
 
-    def update_intrinsic_values(self, all=False, save=True):
+    def update_ticker(self, ticker: str, save=True):
+        ticker = standardize_ticker(ticker)
+
+        sheet = self.file.active
+        header_location = self.__get_header_location('Hisse')
+        ticker_column = sheet[header_location]
+        ticker_row = -1
+        for ticker_idx in range(len(ticker_column)):
+            if ticker_column[ticker_idx].value == ticker:
+                ticker_row = ticker_idx + 1
+        if ticker_row == -1:
+            raise KeyError(ticker)
+
+        price_header = self.__get_header_location('Fiyat')
+        cell_location = price_header + str(ticker_row)
+        sheet[cell_location] = self.__get_price(ticker)
+
+        intrinsic_header = self.__get_header_location('İçsel Değer')
+        cell_location = intrinsic_header + str(ticker_row)
+        sheet[cell_location] = self.__get_intrinsic_value(ticker)
+
+        if save:
+            self.file.save(filename=self.file_path)
+
+
+    def update_intrinsic_values(self, all=True, save=True):
         # Load the sheet
         sheet = self.file.active
         # Get header location, update the header if needed
@@ -29,7 +68,7 @@ class Records():
             if tickers[idx] is None or tickers[idx] == 'Total':
                 continue
             # This happens on empty parts
-            if value is None:
+            if all or value is None:
                 cell_location = intrinsic_header + str(idx + 2)
                 intr_value = self.__get_intrinsic_value(tickers[idx])
                 sheet[cell_location] = intr_value
@@ -61,7 +100,10 @@ class Records():
     def __get_header_location(self, header_name):
         # Load the sheet
         sheet = self.file.active
-        headers = [cell.value for cell in next(sheet.rows)]
+        try:
+            headers = [cell.value for cell in next(sheet.rows)]
+        except StopIteration:
+            headers = []
         # Try to get the header
         try:
             header_location = headers.index(header_name)
@@ -87,11 +129,33 @@ class Records():
 
         return values
 
+    def __set_values(self, header_name: str, values: list, save=False):
+        # Load the sheet
+        sheet = self.file.active
+        # Get header location
+        header_location = self.__get_header_location(header_name)
+        # Save the values
+        value_idx = 2
+        for value in values:
+            cell_name = header_location + str(value_idx)
+            sheet[cell_name] = value
+            value_idx += 1
+        if save:
+            self.file.save(self.file_path)
+            
+
     def __get_intrinsic_value(self, ticker: str):
-        company = Company(ticker, self.file_path.parents[1])
+        company = Company(ticker, self.file_path.parents[1], update=self.online)
         multiplier = 1.0
         return company.default_valuation(extra_multiple=multiplier)
 
     def __get_price(self, ticker: str):
         # TODO: Get the price here
-        return Ticker(ticker=ticker + '.IS').fast_info['last_price']
+        try:
+            stock = Ticker(ticker=ticker + '.IS', session=self.yahoo_session)
+            price = stock.fast_info['last_price']
+            print('Price for', ticker, 'obtained.')
+            return price
+        except:
+            print('Price for', ticker, 'could not be obtained.')
+            return 0.0

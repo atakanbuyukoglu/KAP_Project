@@ -7,6 +7,8 @@ report_periods = {
     'Yıllık': 4
 }
 
+solo_names = ['Solo', 'Bireysel', 'Konsolide Olmayan']
+
 # Auto fit the columns of a worksheet to its data
 def auto_fit_columns(sheet: worksheet):
     for column_cells in sheet.columns:
@@ -32,3 +34,9 @@ def standardize_ticker(ticker):
 def to_quarter(year, period: str):
     quarter_info = str(year) + 'Q' + str(report_periods[period])
     return quarter_info
+
+def is_solo(report_info):
+    for solo_name in solo_names:
+        if solo_name.lower() in report_info['basic']['summary'].lower():
+            return True
+    return False

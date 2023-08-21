@@ -4,11 +4,11 @@ import pandas as pd
 
 class Company:
 
-    def __init__(self, ticker, data_path) -> None:
+    def __init__(self, ticker, data_path, update=True) -> None:
         self.ticker = standardize_ticker(ticker)
         self.parser = KAPParser(data_path)
 
-        self.financials = self.parser.get_financials(self.ticker)
+        self.financials = self.parser.get_financials(self.ticker, update=update)
         self.balance_sheet = self.__get_balance_sheet()
         self.income_statement = self.__get_income_statement()
         self.cash_flow_statement = self.__get_cash_flow_statement()
@@ -22,7 +22,10 @@ class Company:
             financials = {period: report for period, report in self.financials.items() if 'Q4' in period}
         else:
             financials = self.financials
-        latest_report = financials[max(financials)]
+        if financials:
+            latest_report = financials[max(financials)]
+        else:
+            return None
         # Find the table item with the desired name
         item_name = 'Nakit ve Nakit Benzerleri'
         balance_sheet = None
@@ -40,7 +43,10 @@ class Company:
             financials = {period: report for period, report in self.financials.items() if 'Q4' in period}
         else:
             financials = self.financials
-        latest_report = financials[max(financials)]
+        if financials:
+            latest_report = financials[max(financials)]
+        else:
+            return None
         # Find the table item with the desired name
         item_name = 'Hasılat'
         income_statement = None
@@ -58,7 +64,10 @@ class Company:
             financials = {period: report for period, report in self.financials.items() if 'Q4' in period}
         else:
             financials = self.financials
-        latest_report = financials[max(financials)]
+        if financials:
+            latest_report = financials[max(financials)]
+        else:
+            return None
         # Find the table item with the desired name
         item_name = 'DÖNEM BAŞI NAKİT VE NAKİT BENZERLERİ'
         cash_flow_statement = None
@@ -191,7 +200,8 @@ class Company:
     ### Values calculated using the data from the tables
     def get_controlling_equity_ratio(self):
         equity = self.get_equity()
-        return equity / (equity + self.get_noncontrolling_equity())
+        control_equity = equity / (equity + self.get_noncontrolling_equity())
+        return min(1.0, control_equity)
     def get_net_cash(self, control_adjusted=False):
         control_multiplier = self.get_controlling_equity_ratio() if control_adjusted else 1.0
         net_cash = self.get_cash() + self.get_long_term_investments() - self.get_short_term_financial_debt() - self.get_long_term_financial_debt()
@@ -217,7 +227,8 @@ class Company:
     
     def get_controlling_profit_ratio(self):
         profit = self.get_net_profit()
-        return profit / (profit + self.get_noncontrolling_profit())
+        control_profit = profit / (profit + self.get_noncontrolling_profit())
+        return min(1.0, control_profit)
     def get_basic_operating_income(self, control_adjusted=False, ttm=False):
         control_multiplier = self.get_controlling_profit_ratio() if control_adjusted else 1.0
         basic_operating_income = self.get_operating_profit(ttm=ttm) - self.get_other_operating_income(ttm=ttm) - self.get_other_operating_expense(ttm=ttm)
@@ -237,7 +248,20 @@ class Company:
         return multiple * self.get_equity() / self.get_share_count()
     def default_valuation(self, extra_multiple = 1.0):
         ticker_info = self.parser.get_info(self.ticker)
-        if 'GAYRİMENKUL YATIRIM ORTAKLIĞI' in ticker_info.loc['NAME']:
-            return extra_multiple * self.book_value_valuation()
+        if 'YATIRIM ORTAKLIĞI' in ticker_info.loc['NAME']:
+            try:
+                return extra_multiple * self.book_value_valuation()
+            except:
+                print('Book valuation not found for', self.ticker)
+                return 0.0
         else:
-            return extra_multiple * self.ebitda_valuation()
+            try:
+                return extra_multiple * self.ebitda_valuation()
+            except:
+                print('Ebitda valuation not found for', self.ticker)
+                try:
+                    return extra_multiple * self.book_value_valuation()
+                except:
+                    print('Book valuation not found for', self.ticker)
+                    return 0.0
+                    
