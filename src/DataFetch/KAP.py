@@ -200,16 +200,19 @@ class KAP:
             # Add the date headers
             financial_table_info = financial_table_tr[0]
             financial_table_headers = financial_table_info.find_all(class_='context-header')
-            header_now = financial_table_headers[0]
-            header_now = header_now.find(class_='content-tr')
-            header_now = str(header_now.contents[-1])
-            header_now = header_now.strip()
-            columns.append(header_now)
+            for table_header in financial_table_headers:
+                header = table_header
+                header = header.find(class_='content-tr')
+                header = str(header.contents[-1])
+                header = header.strip()
+                columns.append(header)
+            '''
             header_prev = financial_table_headers[1]
             header_prev = header_prev.find(class_='content-tr')
             header_prev = str(header_prev.contents[-1])
             header_prev = header_prev.strip()
             columns.append(header_prev)
+            '''
             # Get the pandas variable for the report
             pd_reports.append(self.__table_2_pandas(financial_table, columns, currency_multiple))
 
@@ -236,16 +239,23 @@ class KAP:
                 title = str(title.find(class_='content-tr').string)
                 title = title.strip()
                 pd_element.append(title)
-                this_value = element.find(class_='col-order-class-4')
-                this_value = this_value.find(class_='monetary-field-default')
-                this_value = float(this_value['title']) if this_value is not None and this_value.has_attr('title') else 0.0
-                this_value *= multiple
-                pd_element.append(this_value)
+                for i in range(len(report_columns)-1):
+                    col_order_class = i + 4
+                    value = element.find(class_='col-order-class-'+str(col_order_class))
+                    if value is not None:
+                        value = value.find(class_='monetary-field-default')
+                        value = float(value['title']) if value is not None and value.has_attr('title') else 0.0
+                        value *= multiple
+                    else:
+                        value = 0.0
+                    pd_element.append(value)
+                '''
                 prev_value = element.find(class_='col-order-class-5')
                 prev_value = prev_value.find(class_='monetary-field-default')
                 prev_value = float(prev_value['title']) if prev_value is not None and prev_value.has_attr('title') else 0.0
                 prev_value *= multiple
                 pd_element.append(prev_value)
+                '''
                 # Add the table row
                 pd_balance_sheet.append(pd_element)
         pd_balance_sheet = pd.DataFrame(pd_balance_sheet, columns=report_columns)
