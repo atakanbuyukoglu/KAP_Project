@@ -317,7 +317,6 @@ class KAP:
             report_months = [report['basic']['period'] for report in reports_financial]
         # Summary is not present in all reports
         except KeyError:
-            # TODO: Handle this case
             solo_filtered = False
 
         # Get the financial reports as pandas objects

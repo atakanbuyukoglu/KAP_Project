@@ -7,7 +7,6 @@ from ..DataFetch.utils import standardize_ticker
 from yfinance import Ticker
 import numpy as np
 
-# TODO: Create an Excel file and update it given the company names with the valuations and prices
 class Records():
     
     def __init__(self, file_path, initial_tickers=None, add_tickers=False, online=True) -> None:
@@ -159,7 +158,6 @@ class Records():
         return company.default_valuation(quarter=quarter, extra_multiple=multiplier)
 
     def __get_price(self, ticker: str):
-        # TODO: Get the price here
         try:
             stock = Ticker(ticker=ticker + '.IS', session=self.yahoo_session)
             metadata = stock.get_history_metadata()
