@@ -5,6 +5,7 @@ from .Metrics import Company
 from ..DataFetch.RequestWrapper import Request
 from ..DataFetch.utils import standardize_ticker
 from yfinance import Ticker
+import numpy as np
 
 # TODO: Create an Excel file and update it given the company names with the valuations and prices
 class Records():
@@ -26,9 +27,13 @@ class Records():
         self.yahoo_session = Request(sleep_time=1.0)
 
     def update(self, all=True):
-        self.update_prices(all=all, save=False)
-        self.update_intrinsic_values(all=all, save=False)
-        self.file.save(filename=self.file_path)
+        online = self.online
+        self.update_prices(all=all)
+        self.update_intrinsic_values(all=all)
+        self.online = False
+        self.update_intrinsic_values(all=all, quarter=True)
+        self.online = online
+        #self.file.save(filename=self.file_path)
 
     def update_ticker(self, ticker: str, save=True):
         ticker = standardize_ticker(ticker)
@@ -50,16 +55,20 @@ class Records():
         intrinsic_header = self.__get_header_location('İçsel Değer')
         cell_location = intrinsic_header + str(ticker_row)
         sheet[cell_location] = self.__get_intrinsic_value(ticker)
+        intrinsic_header = self.__get_header_location('İçsel Değer (Çeyrek)')
+        cell_location = intrinsic_header + str(ticker_row)
+        sheet[cell_location] = self.__get_intrinsic_value(ticker, quarter=True)
 
         if save:
             self.file.save(filename=self.file_path)
 
 
-    def update_intrinsic_values(self, all=True, save=True):
+    def update_intrinsic_values(self, all=True, quarter=False, save=True):
         # Load the sheet
         sheet = self.file.active
         # Get header location, update the header if needed
-        intrinsic_header = self.__get_header_location('İçsel Değer')
+        intrinsic_header_str = 'İçsel Değer (Çeyrek)' if quarter else 'İçsel Değer'
+        intrinsic_header = self.__get_header_location(intrinsic_header_str)
         ticker_header = self.__get_header_location('Hisse')
         # Update all values on the column
         tickers = self.__get_values(ticker_header)
@@ -70,7 +79,7 @@ class Records():
             # This happens on empty parts
             if all or value is None:
                 cell_location = intrinsic_header + str(idx + 2)
-                intr_value = self.__get_intrinsic_value(tickers[idx])
+                intr_value = self.__get_intrinsic_value(tickers[idx], quarter=quarter)
                 sheet[cell_location] = intr_value
         
         if save:
@@ -144,17 +153,19 @@ class Records():
             self.file.save(self.file_path)
             
 
-    def __get_intrinsic_value(self, ticker: str):
+    def __get_intrinsic_value(self, ticker: str, quarter=False):
         company = Company(ticker, self.file_path.parents[1], update=self.online)
         multiplier = 1.0
-        return company.default_valuation(extra_multiple=multiplier)
+        return company.default_valuation(quarter=quarter, extra_multiple=multiplier)
 
     def __get_price(self, ticker: str):
         # TODO: Get the price here
         try:
             stock = Ticker(ticker=ticker + '.IS', session=self.yahoo_session)
-            price = stock.fast_info['last_price']
-            print('Price for', ticker, 'obtained.')
+            metadata = stock.get_history_metadata()
+            price = metadata['regularMarketPrice']
+            price = np.round(price, 2)
+            print('Price for', ticker, 'obtained:', price)
             return price
         except:
             print('Price for', ticker, 'could not be obtained.')
