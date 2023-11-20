@@ -14,4 +14,8 @@ companies = list(company_info.index)
 
 record_file = Records(records_path / 'Valuation_all.xlsx', initial_tickers=companies, add_tickers=False, online=True)
 
-record_file.update_intrinsic_values()
+#record_file.update()
+record_file.update_prices()
+#record_file.update_intrinsic_values()
+#record_file.online = False
+#record_file.update_intrinsic_values(quarter=True)
