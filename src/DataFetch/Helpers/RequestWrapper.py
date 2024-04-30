@@ -2,6 +2,7 @@ import requests as r
 import time
 from fake_useragent import UserAgent
 
+# A request class modified with embedded fake chrome user agent and a sleep time option between requests.
 class Request(r.Session):
 
     def __init__(self, sleep_time:float=5.0):

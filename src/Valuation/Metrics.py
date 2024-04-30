@@ -1,12 +1,15 @@
 from .KAP_Interface import KAPParser
-from ..DataFetch.utils import standardize_ticker
+from ..DataFetch.Helpers.utils import standardize_ticker
 import pandas as pd
 
+# TODO: Fix the functions for yearly financials
 class Company:
 
     def __init__(self, ticker, data_path, update=True) -> None:
         self.ticker = standardize_ticker(ticker)
         self.parser = KAPParser(data_path)
+
+        self.last_quarter = None
 
         self.financials = self.parser.get_financials(self.ticker, update=update)
         self.balance_sheet = self.__get_balance_sheet()
@@ -24,6 +27,8 @@ class Company:
         else:
             financials = self.financials
         if financials:
+            if not yearly:
+                self.last_quarter = int(max(financials)[-1])
             latest_report = financials[max(financials)]
         else:
             return None
@@ -35,7 +40,6 @@ class Company:
             if item_name in table_column:
                 balance_sheet = table.rename(columns={table_name: 'Item'})
                 balance_sheet.set_index('Item', inplace=True)
-
         return balance_sheet
 
     def __get_income_statement(self, yearly=False):
@@ -84,8 +88,8 @@ class Company:
 
         return cash_flow_statement
 
-    def get_share_count(self):
-        return self.parser.get_share_count(self.ticker)
+    def get_share_count(self, online: bool=False):
+        return self.parser.get_share_count(self.ticker, online=online)
 
     ### Values from the balance sheet ###
     def get_cash(self):
@@ -181,11 +185,16 @@ class Company:
         if type(value) == pd.DataFrame:
             value = value.iloc[priority]
         if ttm:
-            value_year = self.yearly_income_statement.loc[value_name]
-            # Handle multiple occurrences
-            if type(value_year) == pd.DataFrame:
-                value_year = value_year.iloc[priority]
-            return value_year.iloc[0] + value.iloc[0] - value.iloc[1]
+            try:
+                value_year = self.yearly_income_statement.loc[value_name]
+                # Handle multiple occurrences
+                if type(value_year) == pd.DataFrame:
+                    value_year = value_year.iloc[priority]
+                # Subtract the part not in TTM
+                value_year = value_year.iloc[0] - value.iloc[1]
+            except AttributeError:
+                value_year = 0.0
+            return value_year + value.iloc[0]
         elif quarter:
             return value.iloc[2]
         else:
@@ -195,20 +204,31 @@ class Company:
     def get_amortization(self, ttm=False, quarter=False):
         return self.__get_cash_flow_statement_value('Amortisman ve İtfa Gideri İle İlgili Düzeltmeler', ttm=ttm, quarter=quarter)
 
-    def __get_cash_flow_statement_value(self, value_name, ttm=False, quarter=False):
+    def __get_cash_flow_statement_value(self, value_name, ttm=False, quarter=False, priority=0):
         try:
             value = self.cash_flow_statement.loc[value_name]
         except KeyError:
             return 0.0
         if ttm:
-            value_year = self.yearly_cash_flow_statement.loc[value_name].iloc[0]
-            return value_year + value.iloc[0] - value.iloc[1]
-        elif quarter:
             try:
-                prev_value = self.prev_cash_flow_statement.loc[value_name]
-                return value.iloc[0] - prev_value.iloc[0]
-            except KeyError:
+                value_year = self.yearly_cash_flow_statement.loc[value_name]
+                # Handle multiple occurrences
+                if type(value_year) == pd.DataFrame:
+                    value_year = value_year.iloc[priority]
+                # Subtract the part not in TTM
+                value_year = value_year.iloc[0] - value.iloc[1]
+            except AttributeError:
+                value_year = 0.0
+            return value_year + value.iloc[0]
+        elif quarter:
+            if self.last_quarter == 4:
                 return value.iloc[0]
+            else:
+                try:
+                    prev_value = self.prev_cash_flow_statement.loc[value_name]
+                    return value.iloc[0] - prev_value.iloc[0]
+                except KeyError:
+                    return value.iloc[0] / self.last_quarter
         else:
             return value.iloc[0]
     
@@ -263,7 +283,7 @@ class Company:
     ### Valuation methods
     def ebitda_valuation(self, multiple=10, control_adjusted=True, quarter=False):
         quarter_multiplier = 4 if quarter else 1
-        return (quarter_multiplier * self.get_adjusted_ebitda(ttm=not quarter, quarter=quarter, control_adjusted=control_adjusted) * multiple + self.get_net_assets_for_ev(control_adjusted=control_adjusted)) / self.get_share_count()
+        return (quarter_multiplier * self.get_adjusted_ebitda(ttm=False, quarter=quarter, control_adjusted=control_adjusted) * multiple + self.get_net_assets_for_ev(control_adjusted=control_adjusted)) / self.get_share_count()
     def book_value_valuation(self, multiple=1.0):
         return multiple * self.get_equity() / self.get_share_count()
     def default_valuation(self, extra_multiple = 1.0, quarter=False):

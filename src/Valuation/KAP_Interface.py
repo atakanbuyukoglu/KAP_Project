@@ -8,8 +8,8 @@ class KAPParser():
     def get_financials(self, ticker: str, update=True):
         return self.kap.get_company_financials(ticker, update=update)
     
-    def get_share_count(self, ticker: str):
-        return self.kap.get_share_count(ticker)
+    def get_share_count(self, ticker: str, online: bool=False):
+        return self.kap.get_share_count(ticker, online=online)
     
     def get_info(self, ticker: str):
         company_info = self.kap.get_company_info()

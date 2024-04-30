@@ -2,8 +2,8 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from itertools import islice
 from .Metrics import Company
-from ..DataFetch.RequestWrapper import Request
-from ..DataFetch.utils import standardize_ticker
+from ..DataFetch.Helpers.RequestWrapper import Request
+from ..DataFetch.Helpers.utils import standardize_ticker
 from yfinance import Ticker
 import numpy as np
 
@@ -61,6 +61,35 @@ class Records():
         if save:
             self.file.save(filename=self.file_path)
 
+    def update_share_counts(self, all=True, quarter=False, save=True, intrinsic_online: bool=None):
+        if intrinsic_online is None:
+            intrinsic_online = self.online
+        # Load the sheet
+        sheet = self.file.active
+        # Get header location, update the header if needed
+        intrinsic_header_str = 'İçsel Değer (Çeyrek)' if quarter else 'İçsel Değer'
+        intrinsic_header = self.__get_header_location(intrinsic_header_str)
+        ticker_header = self.__get_header_location('Hisse')
+        # Update all values on the column
+        tickers = self.__get_values(ticker_header)
+        values = self.__get_values(intrinsic_header)
+        for idx, value in enumerate(values):
+            if tickers[idx] is None or tickers[idx] == 'Total':
+                continue
+            # This happens on empty parts
+            if all or value is None:
+                try:
+                    cell_location = intrinsic_header + str(idx + 2)
+                    self.__get_share_count(tickers[idx])
+                    intr_value = self.__get_intrinsic_value(tickers[idx], quarter=quarter, online=intrinsic_online)
+                    sheet[cell_location] = intr_value
+                except Exception as e:
+                    if save:
+                        self.file.save(filename=self.file_path)
+                    raise e
+
+        if save:
+            self.file.save(filename=self.file_path)
 
     def update_intrinsic_values(self, all=True, quarter=False, save=True):
         # Load the sheet
@@ -150,10 +179,17 @@ class Records():
             value_idx += 1
         if save:
             self.file.save(self.file_path)
-            
 
-    def __get_intrinsic_value(self, ticker: str, quarter=False):
-        company = Company(ticker, self.file_path.parents[1], update=self.online)
+
+    def __get_share_count(self, ticker: str):
+        company = Company(ticker, self.file_path.parents[1], update=False)
+        print('Obtaining share count of', ticker)
+        return company.get_share_count(online=self.online)
+
+    def __get_intrinsic_value(self, ticker: str, quarter=False, online=None):
+        if online is None:
+            online = self.online
+        company = Company(ticker, self.file_path.parents[1], update=online)
         multiplier = 1.0
         return company.default_valuation(quarter=quarter, extra_multiple=multiplier)
 

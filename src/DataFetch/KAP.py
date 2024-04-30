@@ -1,9 +1,13 @@
 # Request related imports
-from .RequestWrapper import Request
+from .Helpers.RequestWrapper import Request
+
+# Parsing imports
 import bs4
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 import re
+
+# Miscellaneous imports
 import time
 import json
 from pathlib import Path
@@ -13,7 +17,7 @@ from openpyxl import Workbook
 import pandas as pd
 
 # Internal imports
-from .utils import auto_fit_columns, standardize_ticker, to_quarter, is_solo
+from .Helpers.utils import auto_fit_columns, standardize_ticker, to_quarter, is_solo
 
 # Constants related to the KAP website
 # KAP Links
@@ -28,13 +32,16 @@ SLEEP_TIME = 2.0
 # An interface for the KAP website
 # Try to keep as high level as possible
 class KAP:
+
     def __init__(self, data_path) -> None:
         self.companies_path = Path(data_path)
         self.r = Request(sleep_time=SLEEP_TIME)
 
         self.company_info = None
  
+    ### COMPANY INFORMATION INDEXING FUNCTIONS ###
     # Save the legal information about companies to the database about companies from the KAP website
+    # Not to be called on any new data, this creates the file from scratch. On new data call update_company_info.
     def save_company_info(self):
         ### GETTING THE HTML RESULTS
 
@@ -96,6 +103,7 @@ class KAP:
     def __update_company_info(self):
         self.company_info.to_excel(self.companies_path /  'Company_Info.xlsx', sheet_name='Info')
 
+    ### MKK ID FUNCTIONS ###
     def __add_mkk_id(self, ticker: str):
         # Get the MKK ID from the KAP website
         resp = self.r.get(url=self.company_info.loc[ticker, 'LINK'])
@@ -125,6 +133,7 @@ class KAP:
         # Else, return the added MKK ID
         return self.__add_mkk_id(ticker)
 
+    ### SHARE COUNT FUNCTIONS ###
     def __add_share_count(self, ticker: str):
         # Get the share count from the KAP website
         url = self.company_info.loc[ticker, 'LINK'].replace('ozet', 'genel')
@@ -132,31 +141,38 @@ class KAP:
         soup = BeautifulSoup(resp.text, 'html.parser')
         share_count_tag = soup('div', string=' Ödenmiş/Çıkarılmış Sermaye ')[0]
         share_count_tag = share_count_tag.parent.next_sibling.next_sibling
-        share_count = float(share_count_tag.contents[1].string)
+        try:
+            share_count = float(share_count_tag.contents[1].string)
+        # Handle conversion error
+        except ValueError:
+            print('Share count cannot be converted on ', ticker, '. Share count:', share_count_tag.contents[1].string)
+            share_count = 1
         # Update the info
         self.company_info.loc[ticker, 'SHARE COUNT'] = share_count
         # Update the company info file with the new information
         self.__update_company_info()
         return share_count
 
-    def get_share_count(self, ticker: str):
+    def get_share_count(self, ticker: str, online: bool=False):
         # Standardize the parameter
         ticker = standardize_ticker(ticker)
 
         # Initialize company info if not initialized yet
         self.get_company_info()
 
-        # Add the MKK ID header if not added yet
-        if 'SHARE COUNT' not in self.company_info.columns:
-            self.company_info['SHARE COUNT'] = None
-        
-        # If the MKK ID is already added, return it
-        share_count = self.company_info.loc[ticker, 'SHARE COUNT']
-        if not pd.isna(share_count):
-            return share_count
-        # Else, return the added MKK ID
+        if not online:
+            # Add the share count header if not added yet
+            if 'SHARE COUNT' not in self.company_info.columns:
+                self.company_info['SHARE COUNT'] = None
+            
+            # If the share count is already added, return it
+            share_count = self.company_info.loc[ticker, 'SHARE COUNT']
+            if not pd.isna(share_count):
+                return share_count
+        # If not returned yet, add it online and return it
         return self.__add_share_count(ticker)
 
+    ### REPORT HANDLING FUNCTIONS ###
     def __save_report(self, report, ticker, year, month, check_solo=False):
         # Define the save path
         save_path = self.__get_save_path(ticker)
@@ -164,34 +180,37 @@ class KAP:
 
         # Parse the HTML file
         soup = BeautifulSoup(report, 'html.parser')
-        # Find the multiple for the reports
+        # Find the currency and its multiple for the reports
         report_info = soup('td', class_='financial-header-title', limit=2)
         currency = report_info[0]
         currency = currency.next_sibling.next_sibling
         currency = str(currency.string)
         currency_multiple = 10 ** currency.count('0')
+        # Do not save the report if it is not consolidated if the option to check is enabled.
         if check_solo:
             report_type = report_info[1]
             report_type = report_type.next_sibling.next_sibling
             report_type = str(report_type.string)
             if report_type != 'Konsolide':
                 return False
+        # Get all parts of the financial tables
         financial_tables = soup('table', class_='financial-table')
         pd_reports = []
         report_idx = 1
+        # For each table: Balance sheet, income statement etc.
         for financial_table in financial_tables:
             # Get to the body part
             financial_table = financial_table.tbody
-
             # Define the headers to get the column names
             columns = []
             financial_table_tr = financial_table.find_all('tr', limit=2)
             financial_table_name = financial_table_tr[1]
             financial_table_name = financial_table_name.find(class_='taxonomy-field-title')
-            # If the report name is not found, the table is not compatible
             # TODO: Fix for the banks
+            # If the report name is not found, the table is not compatible, it is probably auditor notes. So just pass that part.
             if financial_table_name is None:
                 continue
+            # TODO: Understand this part
             financial_table_name = str(financial_table_name.find(class_='content-tr').string)
             financial_table_name = financial_table_name.strip()
             financial_table_name = 'Table ' + str(report_idx)
@@ -206,13 +225,6 @@ class KAP:
                 header = str(header.contents[-1])
                 header = header.strip()
                 columns.append(header)
-            '''
-            header_prev = financial_table_headers[1]
-            header_prev = header_prev.find(class_='content-tr')
-            header_prev = str(header_prev.contents[-1])
-            header_prev = header_prev.strip()
-            columns.append(header_prev)
-            '''
             # Get the pandas variable for the report
             pd_reports.append(self.__table_2_pandas(financial_table, columns, currency_multiple))
 
