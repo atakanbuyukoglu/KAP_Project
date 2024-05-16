@@ -7,6 +7,12 @@ report_periods = {
     'Yıllık': 4
 }
 
+book_value_strings = [
+    'YATIRIM ORTAKLIĞI',
+    'GAYRİMENKUL YATIRIM',
+    'GAYRİMENKUL GELİŞTİRME'
+]
+
 solo_names = ['Solo', 'Bireysel', 'Konsolide Olmayan']
 
 # Auto fit the columns of a worksheet to its data

@@ -1,16 +1,25 @@
 from src.Valuation.Records import Records
 from src.Valuation.Metrics import Company
 from pathlib import Path
+import argparse
 
-company_name = 'megap'
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Example script with an argument")
+    parser.add_argument("company_name", nargs='?', help="The argument to be passed")
 
-records_path = Path(__file__).parent / "Data" / 'Valuation'
-data_path = records_path.parent
-records_path.mkdir(parents=True, exist_ok=True)
+    args = parser.parse_args()
 
-company = Company(company_name, data_path, update=False)
+    company_name = args.company_name
+    if company_name is None:
+        company_name = 'pgsus'
 
-record_file = Records(records_path / 'Valuation_all.xlsx', online=True)
+    records_path = Path(__file__).parent / "Data" / 'Valuation'
+    data_path = records_path.parent
+    records_path.mkdir(parents=True, exist_ok=True)
 
-company.get_share_count(online=True)
-record_file.update_ticker(company_name)
+    company = Company(company_name, data_path, update=False)
+
+    record_file = Records(records_path / 'Valuation_all.xlsx', online=True)
+
+    company.get_share_count(online=True)
+    record_file.update_ticker(company_name)

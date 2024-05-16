@@ -1,14 +1,14 @@
 from .KAP_Interface import KAPParser
-from ..DataFetch.Helpers.utils import standardize_ticker
+from ..DataFetch.Helpers.utils import standardize_ticker, book_value_strings
 import pandas as pd
 
-# TODO: Fix the functions for yearly financials
 class Company:
 
     def __init__(self, ticker, data_path, update=True) -> None:
         self.ticker = standardize_ticker(ticker)
         self.parser = KAPParser(data_path)
 
+        # Defined as 1 to 4 depending on the latest announced financials
         self.last_quarter = None
 
         self.financials = self.parser.get_financials(self.ticker, update=update)
@@ -18,7 +18,10 @@ class Company:
         self.yearly_balance_sheet = self.__get_balance_sheet(yearly=True)
         self.yearly_income_statement = self.__get_income_statement(yearly=True)
         self.yearly_cash_flow_statement = self.__get_cash_flow_statement(yearly=True)
+        self.prev_income_statement = self.__get_income_statement(previous=True)
         self.prev_cash_flow_statement = self.__get_cash_flow_statement(previous=True)
+        self.prev_year_income_statement = self.__get_income_statement(prev_year=True)
+
 
     def __get_balance_sheet(self, yearly=False):
         # Get the latest financial report
@@ -41,11 +44,16 @@ class Company:
                 balance_sheet = table.rename(columns={table_name: 'Item'})
                 balance_sheet.set_index('Item', inplace=True)
         return balance_sheet
-
-    def __get_income_statement(self, yearly=False):
+    
+    # TODO: Add functionality to obtain previous year financial for revenue growth
+    def __get_income_statement(self, yearly=False, previous=False, prev_year=False):
         # Get the latest financial report
         if yearly:
             financials = {period: report for period, report in self.financials.items() if 'Q4' in period}
+        elif previous:
+            financials = self.financials.copy()
+            if financials:
+                del financials[max(financials)]
         else:
             financials = self.financials
         if financials:
@@ -144,94 +152,107 @@ class Company:
         except KeyError:
             return 0
     
-    def __get_balance_sheet_value(self, value_name, priority=0):
+    @staticmethod
+    def __get_statement_value(self_statement, value_name, priority=0):
         try:
-            value = self.balance_sheet.loc[value_name]
-        except KeyError:
-            return 0.0
+            value = self_statement.loc[value_name]
+        except (KeyError, AttributeError):
+            return pd.Series([0.0])
         # Handle multiple occurrences
         if type(value) == pd.DataFrame:
             value = value.iloc[priority]
         # High count without multiple occurrences
         elif priority > 0:
-            return 0.0
+            return pd.Series([0.0])
+        return value
+    
+    def __get_balance_sheet_value(self, value_name, priority=0):
+        value = Company.__get_statement_value(self.balance_sheet, value_name, priority)
         return value.iloc[0]
     
     ### Values from the income statement ###
-    def get_revenue(self, ttm=False, quarter=False):
-        return self.__get_income_statement_value('Hasılat', ttm=ttm, quarter=quarter)
-    def get_net_profit(self, ttm=False, quarter=False):
-        return self.__get_income_statement_value('Ana Ortaklık Payları', ttm=ttm, quarter=quarter)
-    def get_noncontrolling_profit(self, ttm=False, quarter=False):
+    def get_revenue(self, quarter=False):
+        return self.__get_income_statement_value('Hasılat', quarter=quarter)
+    def get_net_profit(self, quarter=False):
+        return self.__get_income_statement_value('Ana Ortaklık Payları', quarter=quarter)
+    def get_noncontrolling_profit(self, quarter=False):
         try:
-            return self.__get_income_statement_value('Kontrol Gücü Olmayan Paylar', ttm=ttm, quarter=quarter)
+            return self.__get_income_statement_value('Kontrol Gücü Olmayan Paylar', quarter=quarter)
         except KeyError:
             return 0
-    def get_gross_profit(self, ttm=False, quarter=False):
-        return self.__get_income_statement_value('BRÜT KAR (ZARAR)', ttm=ttm, quarter=quarter)
-    def get_operating_profit(self, ttm=False, quarter=False):
-        return self.__get_income_statement_value('ESAS FAALİYET KARI (ZARARI)', ttm=ttm, quarter=quarter)
-    def get_other_operating_income(self, ttm=False, quarter=False):
-        return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Gelirler', ttm=ttm, quarter=quarter)
-    def get_other_operating_expense(self, ttm=False, quarter=False):
-        return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Giderler', ttm=ttm, quarter=quarter)
+    def get_gross_profit(self, quarter=False):
+        return self.__get_income_statement_value('BRÜT KAR (ZARAR)', quarter=quarter)
+    def get_operating_profit(self, quarter=False):
+        return self.__get_income_statement_value('ESAS FAALİYET KARI (ZARARI)', quarter=quarter)
+    def get_other_operating_income(self, quarter=False):
+        return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Gelirler', quarter=quarter)
+    def get_other_operating_expense(self, quarter=False):
+        return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Giderler', quarter=quarter)
     
-    def __get_income_statement_value(self, value_name, ttm=False, quarter=False, priority=0):
-        try:
-            value = self.income_statement.loc[value_name]
-        except KeyError:
-            return 0.0
-        # Handle multiple occurrences
-        if type(value) == pd.DataFrame:
-            value = value.iloc[priority]
-        if ttm:
-            try:
-                value_year = self.yearly_income_statement.loc[value_name]
-                # Handle multiple occurrences
-                if type(value_year) == pd.DataFrame:
-                    value_year = value_year.iloc[priority]
-                # Subtract the part not in TTM
-                value_year = value_year.iloc[0] - value.iloc[1]
-            except AttributeError:
-                value_year = 0.0
-            return value_year + value.iloc[0]
-        elif quarter:
-            return value.iloc[2]
+    def __get_income_statement_value(self, value_name, quarter=False, priority=0):
+        value = Company.__get_statement_value(self.income_statement, value_name, priority)
+        # If quarterly data is needed
+        if quarter:
+            # First quarter, just data
+            if self.last_quarter == 1:
+                return value.iloc[0]
+            # Last quarter - Q3 Data
+            elif self.last_quarter == 4:
+                if self.prev_income_statement is not None:
+                    prev_value = Company.__get_statement_value(self.prev_income_statement, value_name, priority)
+                    return value.iloc[0] - prev_value.iloc[0]
+                # Alternative solution for the case without previous financials
+                else:
+                    return value.iloc[0] / 4
+            # Q2 and Q3, just get quarterly data
+            else:
+                return value.iloc[2]
+        # If not quarterly, return TTM data (Last 12 months)
         else:
-            return value.iloc[0]
-    
-    ### Values from the cash flow statement ###
-    def get_amortization(self, ttm=False, quarter=False):
-        return self.__get_cash_flow_statement_value('Amortisman ve İtfa Gideri İle İlgili Düzeltmeler', ttm=ttm, quarter=quarter)
-
-    def __get_cash_flow_statement_value(self, value_name, ttm=False, quarter=False, priority=0):
-        try:
-            value = self.cash_flow_statement.loc[value_name]
-        except KeyError:
-            return 0.0
-        if ttm:
-            try:
-                value_year = self.yearly_cash_flow_statement.loc[value_name]
-                # Handle multiple occurrences
-                if type(value_year) == pd.DataFrame:
-                    value_year = value_year.iloc[priority]
-                # Subtract the part not in TTM
-                value_year = value_year.iloc[0] - value.iloc[1]
-            except AttributeError:
-                value_year = 0.0
-            return value_year + value.iloc[0]
-        elif quarter:
+            # Return value on yearly financials
             if self.last_quarter == 4:
                 return value.iloc[0]
+            # Get last year + difference on this year on Q1 to Q3
             else:
-                try:
-                    prev_value = self.prev_cash_flow_statement.loc[value_name]
-                    return value.iloc[0] - prev_value.iloc[0]
-                except KeyError:
-                    return value.iloc[0] / self.last_quarter
-        else:
-            return value.iloc[0]
+                if self.yearly_income_statement is not None:
+                    value_year = Company.__get_statement_value(self.yearly_income_statement, value_name, priority)
+                    return value.iloc[0] - value.iloc[1] + value_year.iloc[0]
+                # Alternative solution for the case without yearly financials
+                else:
+                    return value.iloc[0] * 4 / self.last_quarter
+
+    ### Values from the cash flow statement ###
+    def get_amortization(self, quarter=False):
+        return self.__get_cash_flow_statement_value('Amortisman ve İtfa Gideri İle İlgili Düzeltmeler', quarter=quarter)
     
+    def __get_cash_flow_statement_value(self, value_name, quarter=False, priority=0):
+        value = Company.__get_statement_value(self.cash_flow_statement, value_name, priority)
+        # If quarterly data is needed
+        if quarter:
+            # First quarter, just data
+            if self.last_quarter == 1:
+                return value.iloc[0]
+            # Last quarter - Q3 Data
+            else:
+                if self.prev_cash_flow_statement is not None:
+                    prev_value = Company.__get_statement_value(self.prev_cash_flow_statement, value_name, priority)
+                    return value.iloc[0] - prev_value.iloc[0]
+                else:
+                    return value.iloc[0] / 3
+        # If not quarterly, return TTM data (Last 12 months)
+        else:
+            # Return value on yearly financials
+            if self.last_quarter == 4:
+                return value.iloc[0]
+            # Get last year + difference on this year on Q1 to Q3
+            else:
+                if self.yearly_cash_flow_statement is not None:
+                    value_year = Company.__get_statement_value(self.yearly_cash_flow_statement, value_name, priority)
+                    return value.iloc[0] - value.iloc[1] + value_year.iloc[0]
+                # Alternative solution for the case without yearly financials
+                else:
+                    return value.iloc[0] * 4 / self.last_quarter
+                
     ### Values calculated using the data from the tables
     def get_controlling_equity_ratio(self):
         equity = self.get_equity()
@@ -268,27 +289,32 @@ class Company:
         control_profit = min(1.0, control_profit)
         control_profit = max(0.0, control_profit)
         return control_profit
-    def get_basic_operating_income(self, control_adjusted=False, ttm=False, quarter=False):
+    def get_basic_operating_income(self, control_adjusted=False, quarter=False):
         control_multiplier = self.get_controlling_profit_ratio() if control_adjusted else 1.0
-        basic_operating_income = self.get_operating_profit(ttm=ttm, quarter=quarter) - self.get_other_operating_income(ttm=ttm, quarter=quarter) - self.get_other_operating_expense(ttm=ttm, quarter=quarter)
+        basic_operating_income = self.get_operating_profit(quarter=quarter) - self.get_other_operating_income(quarter=quarter) - self.get_other_operating_expense(quarter=quarter)
         return control_multiplier * basic_operating_income
-    def get_ebitda(self, control_adjusted=False, ttm=False, quarter=False):
+    def get_ebitda(self, control_adjusted=False, quarter=False):
         control_multiplier = self.get_controlling_profit_ratio() if control_adjusted else 1.0
-        ebitda = self.get_basic_operating_income(ttm=ttm, quarter=quarter) + self.get_amortization(ttm=ttm, quarter=quarter)
+        ebitda = self.get_basic_operating_income(quarter=quarter) + self.get_amortization(quarter=quarter)
         return control_multiplier * ebitda
-    def get_adjusted_ebitda(self, control_adjusted=True, ttm=False, quarter=False):
-        ebitda = self.get_ebitda(control_adjusted=control_adjusted, ttm=ttm, quarter=quarter)
+    def get_adjusted_ebitda(self, control_adjusted=True, quarter=False):
+        ebitda = self.get_ebitda(control_adjusted=control_adjusted, quarter=quarter)
         return ebitda
-    
+    def get_revenue_growth(self):
+        revenue = Company.__get_statement_value(self.income_statement, 'Hasılat', priority=0)
+        if revenue.iloc[0] == 0.0 or revenue.iloc[1] == 0.0:
+            return 0.0
+        return 1 * (revenue.iloc[0] / revenue.iloc[1] - 1)
+
     ### Valuation methods
     def ebitda_valuation(self, multiple=10, control_adjusted=True, quarter=False):
         quarter_multiplier = 4 if quarter else 1
-        return (quarter_multiplier * self.get_adjusted_ebitda(ttm=False, quarter=quarter, control_adjusted=control_adjusted) * multiple + self.get_net_assets_for_ev(control_adjusted=control_adjusted)) / self.get_share_count()
+        return (quarter_multiplier * self.get_adjusted_ebitda(quarter=quarter, control_adjusted=control_adjusted) * multiple + self.get_net_assets_for_ev(control_adjusted=control_adjusted)) / self.get_share_count()
     def book_value_valuation(self, multiple=1.0):
         return multiple * self.get_equity() / self.get_share_count()
     def default_valuation(self, extra_multiple = 1.0, quarter=False):
         ticker_info = self.parser.get_info(self.ticker)
-        if 'YATIRIM ORTAKLIĞI' in ticker_info.loc['NAME']:
+        if any(book_value in ticker_info.loc['NAME'] for book_value in book_value_strings):
             try:
                 return extra_multiple * self.book_value_valuation()
             except:
@@ -304,4 +330,4 @@ class Company:
                 except:
                     print('Book valuation not found for', self.ticker)
                     return 0.0
-                    
+    

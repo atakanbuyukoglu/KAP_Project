@@ -56,23 +56,26 @@ class Records():
         sheet[cell_location] = self.__get_intrinsic_value(ticker)
         intrinsic_header = self.__get_header_location('İçsel Değer (Çeyrek)')
         cell_location = intrinsic_header + str(ticker_row)
-        sheet[cell_location] = self.__get_intrinsic_value(ticker, quarter=True)
+        sheet[cell_location] = self.__get_intrinsic_value(ticker, quarter=True, online=False)
 
         if save:
             self.file.save(filename=self.file_path)
 
-    def update_share_counts(self, all=True, quarter=False, save=True, intrinsic_online: bool=None):
+    def update_share_counts(self, all=True, save=True, intrinsic_online: bool=None):
         if intrinsic_online is None:
             intrinsic_online = self.online
         # Load the sheet
         sheet = self.file.active
         # Get header location, update the header if needed
-        intrinsic_header_str = 'İçsel Değer (Çeyrek)' if quarter else 'İçsel Değer'
+        intrinsic_header_str = 'İçsel Değer'
+        intrinsic_header_quarter_str = 'İçsel Değer (Çeyrek)'
         intrinsic_header = self.__get_header_location(intrinsic_header_str)
+        intrinsic_header_quarter = self.__get_header_location(intrinsic_header_quarter_str)
         ticker_header = self.__get_header_location('Hisse')
         # Update all values on the column
         tickers = self.__get_values(ticker_header)
         values = self.__get_values(intrinsic_header)
+        qtr_values = self.__get_values(intrinsic_header_quarter)
         for idx, value in enumerate(values):
             if tickers[idx] is None or tickers[idx] == 'Total':
                 continue
@@ -80,9 +83,12 @@ class Records():
             if all or value is None:
                 try:
                     cell_location = intrinsic_header + str(idx + 2)
+                    cell_location_qtr = intrinsic_header_quarter + str(idx + 2)
                     self.__get_share_count(tickers[idx])
-                    intr_value = self.__get_intrinsic_value(tickers[idx], quarter=quarter, online=intrinsic_online)
+                    intr_value = self.__get_intrinsic_value(tickers[idx], quarter=False, online=intrinsic_online)
+                    intr_value_qtr = self.__get_intrinsic_value(tickers[idx], quarter=True, online=intrinsic_online)
                     sheet[cell_location] = intr_value
+                    sheet[cell_location_qtr] = intr_value_qtr
                 except Exception as e:
                     if save:
                         self.file.save(filename=self.file_path)
@@ -133,7 +139,34 @@ class Records():
         
         if save:
             self.file.save(filename=self.file_path)
-                
+
+    def update_revenue_change(self, all=True, save=True):
+        self.update_column('Hasılat Artışı', self.__get_revenue_change, all=all, save=save)
+
+    def update_last_quarter(self, all=True, save=True):
+        self.update_column('Son Çeyrek', self.__get_last_quarter, all=all, save=save)
+
+    def update_column(self, target_header_str, target_function, all=True, save=True):
+        # Load the sheet
+        sheet = self.file.active
+        # Get header location, update the header if needed
+        target_header = self.__get_header_location(target_header_str)
+        ticker_header = self.__get_header_location('Hisse')
+        # Update all values on the column
+        tickers = self.__get_values(ticker_header)
+        values = self.__get_values(target_header)
+        for idx, value in enumerate(values):
+            if tickers[idx] is None or tickers[idx] == 'Total':
+                continue
+            # This happens on empty parts
+            if all or value is None:
+                cell_location = target_header + str(idx + 2)
+                target_value = target_function(tickers[idx])
+                sheet[cell_location] = target_value
+        
+        if save:
+            self.file.save(filename=self.file_path)
+
     def __get_header_location(self, header_name):
         # Load the sheet
         sheet = self.file.active
@@ -204,3 +237,17 @@ class Records():
         except:
             print('Price for', ticker, 'could not be obtained.')
             return 0.0
+
+    def __get_revenue_change(self, ticker:str, online=None):
+        if online is None:
+            online = self.online
+        company = Company(ticker, self.file_path.parents[1], update=online)
+        print('Getting revenue growth for', ticker)
+        return company.get_revenue_growth()
+
+    def __get_last_quarter(self, ticker:str, online=None):
+        if online is None:
+            online = self.online
+        company = Company(ticker, self.file_path.parents[1], update=online)
+        print('Getting last quarter for', ticker)
+        return 'Q' + str(company.last_quarter)

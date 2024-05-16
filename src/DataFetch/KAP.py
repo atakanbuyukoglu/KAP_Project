@@ -27,7 +27,7 @@ FILTER_SITE = "https://www.kap.org.tr/tr/FilterSgbf/FILTERSGBF"
 DISCLOSURE_SITE = "https://www.kap.org.tr/tr/Bildirim"
 
 # Sleep time between each request, in seconds
-SLEEP_TIME = 2.0
+SLEEP_TIME = 2.01
 
 # An interface for the KAP website
 # Try to keep as high level as possible
@@ -39,6 +39,9 @@ class KAP:
 
         self.company_info = None
  
+    def refresh_r(self):
+        self.r = Request(sleep_time=SLEEP_TIME)
+
     ### COMPANY INFORMATION INDEXING FUNCTIONS ###
     # Save the legal information about companies to the database about companies from the KAP website
     # Not to be called on any new data, this creates the file from scratch. On new data call update_company_info.
@@ -139,13 +142,17 @@ class KAP:
         url = self.company_info.loc[ticker, 'LINK'].replace('ozet', 'genel')
         resp = self.r.get(url=url)
         soup = BeautifulSoup(resp.text, 'html.parser')
-        share_count_tag = soup('div', string=' Ödenmiş/Çıkarılmış Sermaye ')[0]
-        share_count_tag = share_count_tag.parent.next_sibling.next_sibling
         try:
+            share_count_tag = soup('div', string=' Ödenmiş/Çıkarılmış Sermaye ')[0]
+            share_count_tag = share_count_tag.parent.next_sibling.next_sibling
             share_count = float(share_count_tag.contents[1].string)
         # Handle conversion error
         except ValueError:
             print('Share count cannot be converted on ', ticker, '. Share count:', share_count_tag.contents[1].string)
+            share_count = 1
+        # Handle index error for no share count info
+        except IndexError:
+            print('Share count cannot be found on ', ticker, '. Substituting it as 1.')
             share_count = 1
         # Update the info
         self.company_info.loc[ticker, 'SHARE COUNT'] = share_count
@@ -291,8 +298,16 @@ class KAP:
         # Get the indices for the financials from the KAP website
         mkk_id = self.get_mkk_id(ticker)
         company_filter_site = FILTER_SITE + '/' + mkk_id + '/FR/365'
-        reports_text = self.r.get(company_filter_site)
-        reports_json = json.loads(reports_text.text)
+        report_loaded = False
+        while not report_loaded:
+            reports_text = self.r.get(company_filter_site)
+            try:
+                reports_json = json.loads(reports_text.text)
+                report_loaded = True
+            except Exception:
+                print('JSON report not loaded for', ticker)
+                self.refresh_r()
+                time.sleep(30)
         with open(self.companies_path / 'Report_Filter_Sample.json', 'w', encoding='utf-8') as f:
             json.dump(reports_json, f, ensure_ascii=False, indent='\t')
         
