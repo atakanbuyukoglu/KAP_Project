@@ -256,9 +256,12 @@ class Company:
     ### Values calculated using the data from the tables
     def get_controlling_equity_ratio(self):
         equity = self.get_equity()
-        control_equity = equity / (equity + self.get_noncontrolling_equity())
-        control_equity = min(1.0, control_equity)
-        control_equity = max(0.0, control_equity)
+        if equity + self.get_noncontrolling_equity() < 0.0001:
+            control_equity = 1.0
+        else:
+            control_equity = equity / (equity + self.get_noncontrolling_equity())
+            control_equity = min(1.0, control_equity)
+            control_equity = max(0.0, control_equity)
         return control_equity
     def get_net_cash(self, control_adjusted=False):
         control_multiplier = self.get_controlling_equity_ratio() if control_adjusted else 1.0
@@ -285,9 +288,12 @@ class Company:
     
     def get_controlling_profit_ratio(self):
         profit = self.get_net_profit()
-        control_profit = profit / (profit + self.get_noncontrolling_profit())
-        control_profit = min(1.0, control_profit)
-        control_profit = max(0.0, control_profit)
+        if profit + self.get_noncontrolling_profit() < 0.0001:
+            control_profit = 1.0
+        else:
+            control_profit = profit / (profit + self.get_noncontrolling_profit())
+            control_profit = min(1.0, control_profit)
+            control_profit = max(0.0, control_profit)
         return control_profit
     def get_basic_operating_income(self, control_adjusted=False, quarter=False):
         control_multiplier = self.get_controlling_profit_ratio() if control_adjusted else 1.0
