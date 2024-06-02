@@ -61,6 +61,7 @@ class Records():
         if save:
             self.file.save(filename=self.file_path)
 
+    # TODO: Redesägn this function for proper use
     def update_share_counts(self, all=True, save=True, intrinsic_online: bool=None):
         if intrinsic_online is None:
             intrinsic_online = self.online
@@ -98,47 +99,11 @@ class Records():
             self.file.save(filename=self.file_path)
 
     def update_intrinsic_values(self, all=True, quarter=False, save=True):
-        # Load the sheet
-        sheet = self.file.active
-        # Get header location, update the header if needed
         intrinsic_header_str = 'İçsel Değer (Çeyrek)' if quarter else 'İçsel Değer'
-        intrinsic_header = self.__get_header_location(intrinsic_header_str)
-        ticker_header = self.__get_header_location('Hisse')
-        # Update all values on the column
-        tickers = self.__get_values(ticker_header)
-        values = self.__get_values(intrinsic_header)
-        for idx, value in enumerate(values):
-            if tickers[idx] is None or tickers[idx] == 'Total':
-                continue
-            # This happens on empty parts
-            if all or value is None:
-                cell_location = intrinsic_header + str(idx + 2)
-                intr_value = self.__get_intrinsic_value(tickers[idx], quarter=quarter)
-                sheet[cell_location] = intr_value
-        
-        if save:
-            self.file.save(filename=self.file_path)
+        self.update_column(intrinsic_header_str, self.__get_intrinsic_value, all=all, save=save, quarter=quarter)
 
     def update_prices(self, all=True, save=True):
-        # Load the sheet
-        sheet = self.file.active
-        # Get header location, update the header if needed
-        price_header = self.__get_header_location('Fiyat')
-        ticker_header = self.__get_header_location('Hisse')
-        # Update all values on the column
-        tickers = self.__get_values(ticker_header)
-        values = self.__get_values(price_header)
-        for idx, value in enumerate(values):
-            if tickers[idx] is None or tickers[idx] == 'Total':
-                continue
-            # This happens on empty parts
-            if all or value is None:
-                cell_location = price_header + str(idx + 2)
-                price_value = self.__get_price(tickers[idx])
-                sheet[cell_location] = price_value
-        
-        if save:
-            self.file.save(filename=self.file_path)
+        self.update_column('Fiyat', self.__get_price, all=all, save=save)
 
     def update_revenue_change(self, all=True, save=True):
         self.update_column('Hasılat Artışı', self.__get_revenue_change, all=all, save=save)
@@ -146,7 +111,7 @@ class Records():
     def update_last_quarter(self, all=True, save=True):
         self.update_column('Son Çeyrek', self.__get_last_quarter, all=all, save=save)
 
-    def update_column(self, target_header_str, target_function, all=True, save=True):
+    def update_column(self, target_header_str, target_function, all=True, save=True,  **kwargs):
         # Load the sheet
         sheet = self.file.active
         # Get header location, update the header if needed
@@ -161,7 +126,7 @@ class Records():
             # This happens on empty parts
             if all or value is None:
                 cell_location = target_header + str(idx + 2)
-                target_value = target_function(tickers[idx])
+                target_value = target_function(tickers[idx],  **kwargs)
                 sheet[cell_location] = target_value
         
         if save:
