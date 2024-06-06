@@ -13,7 +13,7 @@ kap = KAP(data_path=data_path)
 company_info = kap.save_company_info()
 companies = list(company_info.index)
 
-record_file = Records(records_path / 'Valuation_all.xlsx', initial_tickers=companies, add_tickers=True, online=True)
+record_file = Records(records_path / 'Valuation_all.xlsx', initial_tickers=companies, add_tickers=False, online=True)
 
 #record_file.update_share_counts(intrinsic_online=False)
 #record_file.update()
