@@ -29,17 +29,17 @@ DISCLOSURE_SITE = "https://www.kap.org.tr/tr/Bildirim"
 # Sleep time between each request, in seconds
 SLEEP_TIME = 2.01
 
-# An interface for the KAP website
-# Try to keep as high level as possible
 class KAP:
+    """An interface for the KAP website."""
 
-    def __init__(self, data_path) -> None:
+    def __init__(self, data_path: str) -> None:
+        """Initialize the KAP interface."""
         self.companies_path = Path(data_path)
         self.r = Request(sleep_time=SLEEP_TIME)
-
         self.company_info = None
  
-    def refresh_r(self):
+    def refresh_r(self) -> None:
+        """Refresh the request object."""
         self.r = Request(sleep_time=SLEEP_TIME)
 
     ### COMPANY INFORMATION INDEXING FUNCTIONS ###
