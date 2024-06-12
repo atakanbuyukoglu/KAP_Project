@@ -6,4 +6,4 @@ data_path.mkdir(parents=True, exist_ok=True)
 
 kap = KAP(data_path=data_path)
 
-print(kap.get_company_info())
+kap.get_company_info()

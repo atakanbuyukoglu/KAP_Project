@@ -61,7 +61,7 @@ class Records():
         if save:
             self.file.save(filename=self.file_path)
 
-    # TODO: Redesägn this function for proper use
+    # TODO: Redesign this function for proper use
     def update_share_counts(self, all=True, save=True, intrinsic_online: bool=None):
         if intrinsic_online is None:
             intrinsic_online = self.online

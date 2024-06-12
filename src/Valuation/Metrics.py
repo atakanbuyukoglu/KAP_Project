@@ -320,7 +320,7 @@ class Company:
         return multiple * self.get_equity() / self.get_share_count()
     def default_valuation(self, extra_multiple = 1.0, quarter=False):
         ticker_info = self.parser.get_info(self.ticker)
-        if any(book_value in ticker_info.loc['NAME'] for book_value in book_value_strings):
+        if any(book_value in ticker_info.name for book_value in book_value_strings):
             try:
                 return extra_multiple * self.book_value_valuation()
             except:

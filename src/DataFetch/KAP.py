@@ -18,6 +18,7 @@ import pandas as pd
 
 # Internal imports
 from .Helpers.utils import auto_fit_columns, standardize_ticker, to_quarter, is_solo
+from .CompanyInfo import CompanyInfo, CompaniesInfo
 
 # Constants related to the KAP website
 # KAP Links
@@ -36,149 +37,32 @@ class KAP:
         """Initialize the KAP interface."""
         self.companies_path = Path(data_path)
         self.r = Request(sleep_time=SLEEP_TIME)
-        self.company_info = None
+        self.company_info = CompaniesInfo(self.companies_path / 'Company_Info.json')
  
     def refresh_r(self) -> None:
         """Refresh the request object."""
         self.r = Request(sleep_time=SLEEP_TIME)
 
-    ### COMPANY INFORMATION INDEXING FUNCTIONS ###
-    # Save the legal information about companies to the database about companies from the KAP website
-    # Not to be called on any new data, this creates the file from scratch. On new data call update_company_info.
-    def save_company_info(self):
-        ### GETTING THE HTML RESULTS
-
-        # Get the company list website response
-        companies_html = self.r.get(COMPANY_LIST_SITE)
-        # Check the status code
-        companies_html.raise_for_status()
-        # Get the response in string version
-        companies_html = companies_html.text
-        # Turn the result into a list with an HTML element for each company
-        soup = BeautifulSoup(companies_html, 'html.parser')
-        company_list_html = soup.find_all('div', 'w-clearfix w-inline-block comp-row')
-
-        ### CREATING THE EXCEL FILE FROM HTML RESULTS
-
-        # Get the attributes from the HTML output
-        companies_dict = {}
-        for company_html in company_list_html:
-            company_dict = KAP.__html_2_dict(company_html)
-            companies_dict[company_dict['ticker']] = company_dict
-
-        # Save the results to an XLSX File
-        # Define the file
-        wb = Workbook()
-        # Define the first worksheet
-        ws_info = wb.active
-        ws_info.title = 'Info'
-        # Write the table headers first
-        for idx, company_key in enumerate(company_dict):
-            ws_info.cell(1, idx+1).value = company_key.upper().replace('_', ' ')
-        # Then write the table elements for each company
-        for row_idx, company_dict in enumerate(companies_dict.values()):
-            for col_idx, element in enumerate(company_dict.values()):
-                ws_info.cell(row_idx+2, col_idx+1).value = element
-        # Auto-adjust column width to fit content
-        auto_fit_columns(ws_info)
-        # Save the results to a file
-        save_path = self.companies_path /  'Company_Info.xlsx'
-        wb.save(save_path)
-        # Return the information as a pandas object
-        self.company_info = pd.read_excel(save_path).set_index('TICKER')
-        return self.company_info
-
     # Get the company info object. If not initialized yet, initialize it first.
-    def get_company_info(self):
-        # Return the object if initialized
-        if self.company_info is not None:
-            return self.company_info
-        # Try to get it from the excel file
-        company_info_path = self.companies_path / 'Company_Info.xlsx'
-        if company_info_path.is_file():
-            self.company_info = pd.read_excel(company_info_path)
-            self.company_info.set_index('TICKER', inplace=True)
-            return self.company_info
-        # If nothing works, retrieve it from the website
-        return self.save_company_info()
+    def get_company_info(self, online=False):
+        if online:
+            self.company_info.get_from_kap()
+        return self.company_info
     
-    # Update the company info file according to the changes to the internal company_info object
-    def __update_company_info(self):
-        self.company_info.to_excel(self.companies_path /  'Company_Info.xlsx', sheet_name='Info')
-
-    ### MKK ID FUNCTIONS ###
-    def __add_mkk_id(self, ticker: str):
-        # Get the MKK ID from the KAP website
-        resp = self.r.get(url=self.company_info.loc[ticker, 'LINK'])
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        mkk_id = soup.select('img.comp-logo')[0]['src'].split('/')[-1]
-        self.company_info.loc[ticker, 'MKK ID'] = mkk_id
-        # Update the company info file with the new information
-        self.__update_company_info()
-        # Return the updated company info object
-        return mkk_id
+    def reset_company_info(self):
+        self.company_info.get_from_kap(reset=True)
 
     def get_mkk_id(self, ticker: str):
         # Standardize the parameter
         ticker = standardize_ticker(ticker)
-
-        # Initialize company info if not initialized yet
-        self.get_company_info()
-
-        # Add the MKK ID header if not added yet
-        if 'MKK ID' not in self.company_info.columns:
-            self.company_info['MKK ID'] = None
-        
-        # If the MKK ID is already added, return it
-        mkk_id_set = self.company_info.loc[ticker, 'MKK ID']
-        if not pd.isna(mkk_id_set):
-            return mkk_id_set
-        # Else, return the added MKK ID
-        return self.__add_mkk_id(ticker)
-
-    ### SHARE COUNT FUNCTIONS ###
-    def __add_share_count(self, ticker: str):
-        # Get the share count from the KAP website
-        url = self.company_info.loc[ticker, 'LINK'].replace('ozet', 'genel')
-        resp = self.r.get(url=url)
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        try:
-            share_count_tag = soup('div', string=' Ödenmiş/Çıkarılmış Sermaye ')[0]
-            share_count_tag = share_count_tag.parent.next_sibling.next_sibling
-            share_count = float(share_count_tag.contents[1].string)
-        # Handle conversion error
-        except ValueError:
-            print('Share count cannot be converted on ', ticker, '. Share count:', share_count_tag.contents[1].string)
-            share_count = 1
-        # Handle index error for no share count info
-        except IndexError:
-            print('Share count cannot be found on ', ticker, '. Substituting it as 1.')
-            share_count = 1
-        # Update the info
-        self.company_info.loc[ticker, 'SHARE COUNT'] = share_count
-        # Update the company info file with the new information
-        self.__update_company_info()
-        return share_count
+        return self.company_info.companies[ticker].get_mkk_id(self.r)
 
     def get_share_count(self, ticker: str, online: bool=False):
         # Standardize the parameter
         ticker = standardize_ticker(ticker)
-
-        # Initialize company info if not initialized yet
-        self.get_company_info()
-
-        if not online:
-            # Add the share count header if not added yet
-            if 'SHARE COUNT' not in self.company_info.columns:
-                self.company_info['SHARE COUNT'] = None
-            
-            # If the share count is already added, return it
-            share_count = self.company_info.loc[ticker, 'SHARE COUNT']
-            if not pd.isna(share_count):
-                return share_count
-        # If not returned yet, add it online and return it
-        return self.__add_share_count(ticker)
-
+        return self.company_info.companies[ticker].get_share_count(self.r, reset=online)
+    
+    # TODO: Handle bank financials
     ### REPORT HANDLING FUNCTIONS ###
     def __save_report(self, report, ticker, year, month, check_solo=False):
         # Define the save path
@@ -380,26 +264,6 @@ class KAP:
             financial_tables[financial_period] = pd.read_excel(financial_xl, sheet_name=None)
 
         return financial_tables
-
-    @staticmethod
-    def __html_2_dict(html_result: bs4.element.Tag):
-        company_dict = {}
-
-        ticker = html_result.select('div.comp-cell._04.vtable a.vcell')[0].text
-        ticker = standardize_ticker(ticker)
-        company_dict['ticker'] = ticker
-        name = html_result.select('div.comp-cell._14.vtable a.vcell')[0].text
-        company_dict['name'] = name
-        link = html_result.select('div.comp-cell._04.vtable a.vcell[href]')[0]['href']
-        company_dict['link'] = KAP_SITE + link
-        auditor = html_result.select('div.comp-cell._11.vtable a.vcell')[0].text
-        company_dict['auditor'] = auditor
-        city = html_result.select('div.comp-cell._12.vtable div.vcell')[0].text
-        company_dict['city'] = city
-        kap_id = int(re.search(r'\d+', link).group())
-        company_dict['kap_id'] = kap_id
-
-        return company_dict
 
     def __report_exists(self, ticker, year, month) -> bool:
         report_path = self.__get_save_path(ticker)

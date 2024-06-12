@@ -13,4 +13,4 @@ class KAPParser():
     
     def get_info(self, ticker: str):
         company_info = self.kap.get_company_info()
-        return company_info.loc[ticker]
+        return company_info.companies[ticker]
