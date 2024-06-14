@@ -6,8 +6,8 @@ data_path = Path(__file__).parent / "Data/"
 data_path.mkdir(parents=True, exist_ok=True)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Example script with an argument")
-    parser.add_argument("company_name", nargs='?', help="The argument to be passed")
+    parser = argparse.ArgumentParser(description="Company Valuation Script")
+    parser.add_argument("company_name", nargs='?', help="The company to be valued")
 
     args = parser.parse_args()
 

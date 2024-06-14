@@ -22,6 +22,7 @@ from .CompanyInfo import CompanyInfo, CompaniesInfo
 
 # Constants related to the KAP website
 # KAP Links
+# TODO: Create and use a YAML file for the constants
 KAP_SITE = "https://www.kap.org.tr"
 COMPANY_LIST_SITE = "https://www.kap.org.tr/tr/bist-sirketler"
 FILTER_SITE = "https://www.kap.org.tr/tr/FilterSgbf/FILTERSGBF"
@@ -29,7 +30,7 @@ DISCLOSURE_SITE = "https://www.kap.org.tr/tr/Bildirim"
 
 # Sleep time between each request, in seconds
 SLEEP_TIME = 2.01
-
+# TODO: Search for new financial reports
 class KAP:
     """An interface for the KAP website."""
 

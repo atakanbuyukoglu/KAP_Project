@@ -4,8 +4,8 @@ from pathlib import Path
 import argparse
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Example script with an argument")
-    parser.add_argument("company_name", nargs='?', help="The argument to be passed")
+    parser = argparse.ArgumentParser(description="Updates the ticker record")
+    parser.add_argument("company_name", nargs='?', help="The ticker to be updated")
 
     args = parser.parse_args()
 
