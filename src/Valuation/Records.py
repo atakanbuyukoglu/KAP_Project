@@ -128,6 +128,8 @@ class Records():
                 cell_location = target_header + str(idx + 2)
                 target_value = target_function(tickers[idx],  **kwargs)
                 sheet[cell_location] = target_value
+                
+            print(f'{tickers[idx]} is updated for the column "{target_header_str}"')
         
         if save:
             self.file.save(filename=self.file_path)

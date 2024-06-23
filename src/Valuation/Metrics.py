@@ -1,6 +1,10 @@
 from .KAP_Interface import KAPParser
 from ..DataFetch.Helpers.utils import standardize_ticker, book_value_strings
 import pandas as pd
+import locale
+
+# Set the locale to Turkish
+locale.setlocale(locale.LC_ALL, 'tr_TR.UTF-8')
 
 class Company:
 
@@ -36,13 +40,18 @@ class Company:
         else:
             return None
         # Find the table item with the desired name
-        item_name = 'Nakit ve Nakit Benzerleri'
+        item_name = 'Ödenmiş Sermaye'
+        item_upper = item_name.replace('i', 'İ').upper()
         balance_sheet = None
         for table_name, table in latest_report.items():
-            table_column = table[table_name].tolist()
-            if item_name in table_column:
+            if table.shape[1] > 1:
+                table_column = table.loc[:, table_name].tolist()
+            else:
+                table_column = table.values.tolist()[0]
+            if item_name in table_column or item_upper in table_column:
                 balance_sheet = table.rename(columns={table_name: 'Item'})
                 balance_sheet.set_index('Item', inplace=True)
+                return balance_sheet
         return balance_sheet
     
     # TODO: Add functionality to obtain previous year financial for revenue growth
@@ -61,14 +70,18 @@ class Company:
         else:
             return None
         # Find the table item with the desired name
-        item_name = 'Hasılat'
+        item_name = 'Ana Ortaklık Payları'
+        item_name_2 = 'Grubun Karı (Zararı)'
         income_statement = None
         for table_name, table in latest_report.items():
-            table_column = table[table_name].tolist()
-            if item_name in table_column:
+            if table.shape[1] > 1:
+                table_column = table.loc[:, table_name].tolist()
+            else:
+                table_column = table.values.tolist()[0]
+            if item_name in table_column or item_name_2 in table_column:
                 income_statement = table.rename(columns={table_name: 'Item'})
                 income_statement.set_index('Item', inplace=True)
-
+                return income_statement
         return income_statement
     
     def __get_cash_flow_statement(self, yearly=False, previous=False):
@@ -86,14 +99,19 @@ class Company:
         else:
             return None
         # Find the table item with the desired name
-        item_name = 'DÖNEM BAŞI NAKİT VE NAKİT BENZERLERİ'
+        item_names = ['DÖNEM BAŞI NAKİT VE NAKİT BENZERLERİ',
+                      'Dönem Başındaki Nakit ve Nakit Benzerleri Mevcudu',
+                      'Dönem Başındaki Nakit ve Nakde Eşdeğer Varlıklar']
         cash_flow_statement = None
         for table_name, table in latest_report.items():
-            table_column = table[table_name].tolist()
-            if item_name in table_column:
+            if table.shape[1] > 1:
+                table_column = table.loc[:, table_name].tolist()
+            else:
+                table_column = table.values.tolist()[0]
+            if any(item in table_column for item in item_names):
                 cash_flow_statement = table.rename(columns={table_name: 'Item'})
                 cash_flow_statement.set_index('Item', inplace=True)
-
+                return cash_flow_statement
         return cash_flow_statement
 
     def get_share_count(self, online: bool=False):
@@ -143,7 +161,12 @@ class Company:
         return self.__get_balance_sheet_value('TOPLAM YÜKÜMLÜLÜKLER')
 
     def get_equity(self):
-        return self.__get_balance_sheet_value('Ana Ortaklığa Ait Özkaynaklar')
+        value = self.__get_balance_sheet_value('Ana Ortaklığa Ait Özkaynaklar')
+        if value == 0.0:
+            value = self.__get_balance_sheet_value('ÖZKAYNAKLAR')
+        if value == 0.0:
+            value = self.__get_balance_sheet_value('ÖZSERMAYE TOPLAMI')
+        return value
     def get_total_equity(self):
         return self.__get_balance_sheet_value('TOPLAM ÖZKAYNAKLAR')
     def get_noncontrolling_equity(self):

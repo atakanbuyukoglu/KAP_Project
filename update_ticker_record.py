@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     company_name = args.company_name
     if company_name is None:
-        company_name = 'pgsus'
+        company_name = 'agesa'
 
     records_path = Path(__file__).parent / "Data" / 'Valuation'
     data_path = records_path.parent

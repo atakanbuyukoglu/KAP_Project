@@ -9,6 +9,7 @@ import re
 
 # Miscellaneous imports
 import time
+from datetime import date
 import json
 from pathlib import Path
 
@@ -17,8 +18,11 @@ from openpyxl import Workbook
 import pandas as pd
 
 # Internal imports
-from .Helpers.utils import auto_fit_columns, standardize_ticker, to_quarter, is_solo
+from .Helpers.utils import convert_date_string, standardize_ticker, to_quarter, is_solo
+from .Helpers.DateHandler import DateHandler
 from .CompanyInfo import CompanyInfo, CompaniesInfo
+from .KAPSearch import KAPSearch
+from .KAPReport import KAPReport
 
 # Constants related to the KAP website
 # KAP Links
@@ -28,9 +32,11 @@ COMPANY_LIST_SITE = "https://www.kap.org.tr/tr/bist-sirketler"
 FILTER_SITE = "https://www.kap.org.tr/tr/FilterSgbf/FILTERSGBF"
 DISCLOSURE_SITE = "https://www.kap.org.tr/tr/Bildirim"
 
+DATE_PATH = Path(__file__).parents[2] / 'Data' / 'last_search_date.txt'
+
 # Sleep time between each request, in seconds
 SLEEP_TIME = 2.01
-# TODO: Search for new financial reports
+
 class KAP:
     """An interface for the KAP website."""
 
@@ -39,6 +45,7 @@ class KAP:
         self.companies_path = Path(data_path)
         self.r = Request(sleep_time=SLEEP_TIME)
         self.company_info = CompaniesInfo(self.companies_path / 'Company_Info.json')
+        self.search = KAPSearch()
  
     def refresh_r(self) -> None:
         """Refresh the request object."""
@@ -63,7 +70,6 @@ class KAP:
         ticker = standardize_ticker(ticker)
         return self.company_info.companies[ticker].get_share_count(self.r, reset=online)
     
-    # TODO: Handle bank financials
     ### REPORT HANDLING FUNCTIONS ###
     def __save_report(self, report, ticker, year, month, check_solo=False):
         # Define the save path
@@ -98,11 +104,9 @@ class KAP:
             financial_table_tr = financial_table.find_all('tr', limit=2)
             financial_table_name = financial_table_tr[1]
             financial_table_name = financial_table_name.find(class_='taxonomy-field-title')
-            # TODO: Fix for the banks
             # If the report name is not found, the table is not compatible, it is probably auditor notes. So just pass that part.
             if financial_table_name is None:
                 continue
-            # TODO: Understand this part
             financial_table_name = str(financial_table_name.find(class_='content-tr').string)
             financial_table_name = financial_table_name.strip()
             financial_table_name = 'Table ' + str(report_idx)
@@ -175,7 +179,7 @@ class KAP:
         #     f.write(report)
 
         return pd_balance_sheet
-
+    
     def save_company_financials(self, ticker: str):
         # Standardize the parameter
         ticker = standardize_ticker(ticker)
@@ -183,14 +187,18 @@ class KAP:
         # Get the indices for the financials from the KAP website
         mkk_id = self.get_mkk_id(ticker)
         company_filter_site = FILTER_SITE + '/' + mkk_id + '/FR/365'
+        # Try and get the indices
+        report_load_tries = 0
+        report_load_max_tries = 5
         report_loaded = False
-        while not report_loaded:
+        while not report_loaded and report_load_tries < report_load_max_tries:
             reports_text = self.r.get(company_filter_site)
             try:
                 reports_json = json.loads(reports_text.text)
                 report_loaded = True
             except Exception:
-                print('JSON report not loaded for', ticker)
+                report_load_tries += 1
+                print(f'JSON report not loaded for {ticker}. Try count: {report_load_tries}/{report_load_max_tries}')
                 self.refresh_r()
                 time.sleep(30)
         with open(self.companies_path / 'Report_Filter_Sample.json', 'w', encoding='utf-8') as f:
@@ -199,10 +207,8 @@ class KAP:
         # Filter the financial reports to get indices
         reports_financial = [report for report in reports_json if report['basic']['disclosureCategory'] == 'FR']
         report_indices = [report['basic']['disclosureIndex'] for report in reports_financial]
-        report_years = [report['basic']['year'] for report in reports_financial]
-        report_months = [report['basic']['period'] for report in reports_financial]
 
-        # Filter the reports to filter out solo financials where consolidated is present
+        # Filter the reports to filter out the solo financials where consolidated is already present
         # Get the report periods
         report_years = [report['basic']['year'] for report in reports_financial]
         report_months = [report['basic']['period'] for report in reports_financial]
@@ -219,16 +225,17 @@ class KAP:
                 periods_unique[idx] = False
                 periods_unique[first_indices[period]] = False
         try:
-            # Filter the solo periods out
+            # Filter the nonunique solo periods out (not (nonunique and solo) == unique or not solo)
             reports_financial = [report for unique, report in zip(periods_unique, reports_financial) 
                                 if unique or not is_solo(report)]
             solo_filtered = True
-            # Update other parts
+            # Update other parallel lists
             report_indices = [report['basic']['disclosureIndex'] for report in reports_financial]
             report_years = [report['basic']['year'] for report in reports_financial]
             report_months = [report['basic']['period'] for report in reports_financial]
         # Summary is not present in all reports
         except KeyError:
+            print(f'Solo financials could not be filtered for {ticker}.')
             solo_filtered = False
 
         # Get the financial reports as pandas objects
@@ -254,17 +261,89 @@ class KAP:
         company_path = self.__get_save_path(ticker)
         # If the update option is chosen, update the data
         if update:
-            self.save_company_financials(ticker)
+            self.save_financials(ticker)
         # Check if the data exists. if not, update the financials
         elif not (company_path.is_dir() and len(list(company_path.glob('*.xlsx'))) > 0):
-            self.save_company_financials(ticker)
+            self.save_financials(ticker)
+        
         # Get the data from the file path
         financial_tables = {}
         for financial_xl in company_path.glob('*.xlsx'):
-            financial_period = financial_xl.name[-11:-5]
+            financial_period = financial_xl.name[-11:-5] # The part before ".xlsx"
             financial_tables[financial_period] = pd.read_excel(financial_xl, sheet_name=None)
 
         return financial_tables
+
+    def update_financials(self, from_date:date):
+        # Define the end date
+        to_date = date.today()
+        print(f'{from_date} to {to_date}')
+        # Search the financials from the start to end dates
+        search_results = self.search.search_financials(from_date, to_date)
+        # Update the reports for each result
+        for search_result in search_results:
+            # Get the relevant info from the result
+            ticker = standardize_ticker(search_result['stockCodes'])
+            ticker_info = self.company_info.companies[ticker]
+            report_period = to_quarter(search_result['year'], search_result['ruleTypeTerm'])
+            report_idx = search_result['disclosureIndex']
+            is_modified = search_result.get('isModified', '') # DUZELTME for modification, DUZELTILMIS for modified
+            # Test print
+            print(ticker, report_period)
+            # Define the report object
+            report = KAPReport(ticker, ticker_info, path=self.__get_save_path(ticker), period=report_period)
+            # Save the report
+            report_data = report.get_report(report_idx)
+            # If the exact report is not saved before
+            if not isinstance(report_data, pd.DataFrame):
+                # If the report is already modified by another one, do not save it
+                if is_modified == 'DUZELTILMIS':
+                    print(f'Report {report_period} for {ticker} is not saved, it is already modified.')
+                # In this case the report is either a modification or it was not seen before in this period, save it.
+                else:
+                    report.save_report(self.r, report_idx)
+                    print(f'Report {report_period} for {ticker} is saved.')
+            # If the report already exists, do not save it
+            else:
+                print(f'Report {report_period} for {ticker} already exists.')
+
+        # Update the last search date
+        date_handler = DateHandler(dt_value=date.today(), file_path=DATE_PATH)
+        date_handler.save_to_file()
+
+    def save_financials(self, ticker:str):
+        # Standardize the parameter
+        ticker = standardize_ticker(ticker)
+        # Get the indices for the financials from the KAP website
+        mkk_id = self.get_mkk_id(ticker)
+        search_results = self.search.search_ticker_financials(mkk_id)
+        for search_result in search_results:
+            # Get the relevant info from the result
+            ticker = standardize_ticker(search_result['stockCodes'])
+            ticker_info = self.company_info.companies[ticker]
+            report_period = to_quarter(search_result['year'], search_result['ruleTypeTerm'])
+            report_idx = search_result['disclosureIndex']
+            is_modified = search_result.get('isModified', '') # DUZELTME for modification, DUZELTILMIS for modified
+            # Test print
+            print(ticker, report_period)
+            # Define the report object
+            report = KAPReport(ticker, ticker_info, path=self.__get_save_path(ticker), period=report_period)
+            # Save the report
+            report_data = report.get_report(report_idx)
+            # If the exact report is not saved before
+            if not isinstance(report_data, pd.DataFrame):
+                # If the report is already modified by another one, do not save it
+                if is_modified == 'DUZELTILMIS':
+                    print(f'Report {report_period} for {ticker} is not saved, it is already modified.')
+                # In this case the report is either a modification or it was not seen before in this period, save it.
+                else:
+                    report.save_report(self.r, report_idx)
+                    print(f'Report {report_period} for {ticker} is saved.')
+            # If the report already exists, do not save it
+            else:
+                print(f'Report {report_period} for {ticker} already exists.')
+            
+
 
     def __report_exists(self, ticker, year, month) -> bool:
         report_path = self.__get_save_path(ticker)
@@ -275,6 +354,7 @@ class KAP:
         report_file = report_path / ('Financials_'+ticker+'_'+to_quarter(year, month)+'.xlsx')
         return report_file.is_file()
 
+    # TODO: Replace this with a config from the YAML file
     def __get_save_path(self, ticker):
         return self.companies_path / 'Companies' / ticker
 

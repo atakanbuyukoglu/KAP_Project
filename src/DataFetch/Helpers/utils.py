@@ -1,4 +1,5 @@
 from openpyxl import Workbook, worksheet
+from datetime import datetime, timedelta
 
 report_periods = {
     '3 Aylık': 1,
@@ -28,7 +29,7 @@ def auto_fit_columns(sheet: worksheet):
                 pass
         sheet.column_dimensions[column].width = max_length
 
-def standardize_ticker(ticker):
+def standardize_ticker(ticker:str) -> str:
     # Accept only upper characters
     ticker = ticker.upper()
     # Some tickers have multiple keys separated by comma
@@ -41,8 +42,27 @@ def to_quarter(year, period: str):
     quarter_info = str(year) + 'Q' + str(report_periods[period])
     return quarter_info
 
-def is_solo(report_info):
+def is_solo(report_name):
     for solo_name in solo_names:
-        if solo_name.lower() in report_info['basic']['summary'].lower():
+        if solo_name.lower() in report_name.lower():
             return True
     return False
+
+# Function to check if a cell is empty or hidden
+def is_empty_or_hidden(cell):
+    return not cell.get_text(strip=True) or 'display: none;' in cell.get('style', '')
+
+# First checks if the date string contains "Today", "Tomorrow", or "Yesterday", and replaces these with the appropriate date.
+# Then it converts the modified string into a datetime object using datetime.strptime.
+def convert_date_string(date_string):
+    now = datetime.now()
+    
+    if "Bugün" in date_string:
+        date_string = date_string.replace("Bugün", now.strftime("%d.%m.%y"))
+    elif "Yarın" in date_string:
+        date_string = date_string.replace("Yarın", (now + timedelta(days=1)).strftime("%d.%m.%y"))
+    elif "Dün" in date_string:
+        date_string = date_string.replace("Dün", (now - timedelta(days=1)).strftime("%d.%m.%y"))
+    
+    # Convert the date string to datetime object
+    return datetime.strptime(date_string, "%d.%m.%y %H:%M")
