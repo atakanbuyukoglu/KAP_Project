@@ -104,8 +104,8 @@ class KAPReport:
         # Save the HTML file for later use
         test_path = TEST_RESULTS_PATH / self.ticker
         test_path.mkdir(parents=True, exist_ok=True)
-        with open(test_path / self.get_report_name(consolidated=consolidated).replace('.xlsx', '.html'), 'w', encoding='utf-8') as f:
-            f.write(soup.prettify())
+        #with open(test_path / self.get_report_name(consolidated=consolidated).replace('.xlsx', '.html'), 'w', encoding='utf-8') as f:
+        #    f.write(soup.prettify())
 
         # Get all financial tables
         financial_tables = soup('table', class_='financial-table')
@@ -115,8 +115,8 @@ class KAPReport:
             # Get to the body part
             table_body = financial_table.tbody
             # Save the body in the test for later use
-            with open(test_path / f'Table_{table_idx}.html', 'w', encoding='utf-8') as f:
-                f.write(table_body.prettify())
+            #with open(test_path / f'Table_{table_idx}.html', 'w', encoding='utf-8') as f:
+            #    f.write(table_body.prettify())
             # First, get the table name
             financial_table_row = financial_table.find('tr', class_='abstract-row')
             financial_table_cell = financial_table_row.find(class_='taxonomy-field-title')
