@@ -34,10 +34,16 @@ class Records():
         self.online = online
         #self.file.save(filename=self.file_path)
 
-    def update_ticker(self, ticker: str, save=True):
+    def update_tickers(self, tickers:list, price=False, save=True):
+        for ticker in tickers:
+            self.update_ticker(ticker=ticker, price=price, save=False)
+        if save:
+            self.file.save(filename=self.file_path)
+
+    def update_ticker(self, ticker: str, price=False, save=True):
         ticker = standardize_ticker(ticker)
 
-        sheet = self.file.active
+        sheet = self.file["Sheet"]
         header_location = self.__get_header_location('Hisse')
         ticker_column = sheet[header_location]
         ticker_row = -1
@@ -46,17 +52,26 @@ class Records():
                 ticker_row = ticker_idx + 1
         if ticker_row == -1:
             raise KeyError(ticker)
-
-        price_header = self.__get_header_location('Fiyat')
-        cell_location = price_header + str(ticker_row)
-        sheet[cell_location] = self.__get_price(ticker)
-
-        intrinsic_header = self.__get_header_location('İçsel Değer')
-        cell_location = intrinsic_header + str(ticker_row)
+        # Update price
+        if price:
+            header = self.__get_header_location('Fiyat')
+            cell_location = header + str(ticker_row)
+            sheet[cell_location] = self.__get_price(ticker)
+        # Update intrinsic value
+        header = self.__get_header_location('İçsel Değer')
+        cell_location = header + str(ticker_row)
         sheet[cell_location] = self.__get_intrinsic_value(ticker)
-        intrinsic_header = self.__get_header_location('İçsel Değer (Çeyrek)')
-        cell_location = intrinsic_header + str(ticker_row)
+        header = self.__get_header_location('İçsel Değer (Çeyrek)')
+        cell_location = header + str(ticker_row)
         sheet[cell_location] = self.__get_intrinsic_value(ticker, quarter=True, online=False)
+        # Update revenue change
+        header = self.__get_header_location('Hasılat Artışı')
+        cell_location = header + str(ticker_row)
+        sheet[cell_location] = self.__get_revenue_change(ticker)
+        # Update last quarter
+        header = self.__get_header_location('Son Çeyrek')
+        cell_location = header + str(ticker_row)
+        sheet[cell_location] = self.__get_last_quarter(ticker)
 
         if save:
             self.file.save(filename=self.file_path)
@@ -66,7 +81,7 @@ class Records():
         if intrinsic_online is None:
             intrinsic_online = self.online
         # Load the sheet
-        sheet = self.file.active
+        sheet = self.file["Sheet"]
         # Get header location, update the header if needed
         intrinsic_header_str = 'İçsel Değer'
         intrinsic_header_quarter_str = 'İçsel Değer (Çeyrek)'
@@ -113,7 +128,7 @@ class Records():
 
     def update_column(self, target_header_str, target_function, all=True, save=True,  **kwargs):
         # Load the sheet
-        sheet = self.file.active
+        sheet = self.file["Sheet"]
         # Get header location, update the header if needed
         target_header = self.__get_header_location(target_header_str)
         ticker_header = self.__get_header_location('Hisse')
@@ -136,7 +151,7 @@ class Records():
 
     def __get_header_location(self, header_name):
         # Load the sheet
-        sheet = self.file.active
+        sheet = self.file["Sheet"]
         try:
             headers = [cell.value for cell in next(sheet.rows)]
         except StopIteration:
@@ -157,7 +172,7 @@ class Records():
     
     def __get_values(self, header_location: str):
         # Load the sheet
-        sheet = self.file.active
+        sheet = self.file["Sheet"]
 
         header_idx = ord(header_location) - ord('A')
         header_cells = next(islice(sheet.columns, header_idx, None))
@@ -168,7 +183,7 @@ class Records():
 
     def __set_values(self, header_name: str, values: list, save=False):
         # Load the sheet
-        sheet = self.file.active
+        sheet = self.file["Sheet"]
         # Get header location
         header_location = self.__get_header_location(header_name)
         # Save the values

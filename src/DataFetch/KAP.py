@@ -311,6 +311,8 @@ class KAP:
         date_handler = DateHandler(dt_value=date.today(), file_path=DATE_PATH)
         date_handler.save_to_file()
 
+        return [standardize_ticker(search_result['stockCodes']) for search_result in search_results]
+
     def save_financials(self, ticker:str):
         # Standardize the parameter
         ticker = standardize_ticker(ticker)
