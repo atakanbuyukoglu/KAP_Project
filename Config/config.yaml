@@ -1,0 +1,15 @@
+---
+KAP:
+  sites:
+    main: https://www.kap.org.tr
+    company_list: https://www.kap.org.tr/tr/bist-sirketler
+    filter: https://www.kap.org.tr/tr/FilterSgbf/FILTERSGBF
+    disclosure: https://www.kap.org.tr/tr/Bildirim
+  Data:
+    company_info: Company_Info.json
+    empty_query: Empty_Search_Query.json
+    last_search: last_search_date.txt
+    companies: Companies
+    tests: Test_Results
+    valuation: Valuation
+...
