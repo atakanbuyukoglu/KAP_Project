@@ -335,6 +335,7 @@ class Company:
             return 0.0
         return 1 * (revenue.iloc[0] / revenue.iloc[1] - 1)
 
+    # TODO: Change valuation to use sectors for valuation multiples
     ### Valuation methods
     def ebitda_valuation(self, multiple=10, control_adjusted=True, quarter=False):
         quarter_multiplier = 4 if quarter else 1
