@@ -6,7 +6,7 @@ from datetime import date, timedelta
 data_path = Path(__file__).parent / "Data/"
 
 isyat = IsYatirim()
-x = isyat.getSector('flap')
+x = isyat.get_sector('flap')
 print(x)
 
 #kap.save_financials('AKFK')

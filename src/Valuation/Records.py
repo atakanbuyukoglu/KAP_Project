@@ -4,6 +4,7 @@ from itertools import islice
 from .Metrics import Company
 from ..DataFetch.Helpers.RequestWrapper import Request
 from ..DataFetch.Helpers.utils import standardize_ticker
+from DataFetch.IsYatirim import IsYatirim
 from yfinance import Ticker
 import numpy as np
 
@@ -72,6 +73,10 @@ class Records():
         header = self.__get_header_location('Son Çeyrek')
         cell_location = header + str(ticker_row)
         sheet[cell_location] = self.__get_last_quarter(ticker)
+        # Update sector
+        header = self.__get_header_location('Sektör')
+        cell_location = header + str(ticker_row)
+        sheet[cell_location] = self.__get_sector(ticker)
 
         if save:
             self.file.save(filename=self.file_path)
@@ -88,6 +93,10 @@ class Records():
 
     def update_last_quarter(self, all=True, save=True):
         self.update_column('Son Çeyrek', self.__get_last_quarter, all=all, save=save)
+
+    # TODO: Update only empty sector fields
+    def update_sectors(self, all=True, save=True):
+        self.update_column('Sektör', self.__get_sector, all=all, save=save)
 
     def update_column(self, target_header_str, target_function, all=True, save=True,  **kwargs):
         # Load the sheet
@@ -158,12 +167,6 @@ class Records():
         if save:
             self.file.save(self.file_path)
 
-
-    def __get_share_count(self, ticker: str):
-        company = Company(ticker, self.file_path.parents[1], update=False)
-        print('Obtaining share count of', ticker)
-        return company.get_share_count(online=self.online)
-
     def __get_intrinsic_value(self, ticker: str, quarter=False, online=None):
         if online is None:
             online = self.online
@@ -196,3 +199,12 @@ class Records():
         company = Company(ticker, self.file_path.parents[1], update=online)
         print('Getting last quarter for', ticker)
         return 'Q' + str(company.last_quarter)
+
+    # TODO: Add online functionality but only once per code run
+    def __get_sector(self, ticker:str, online=None):
+        if online is None:
+            online = self.online
+        is_yat = IsYatirim()
+        sector = is_yat.get_sector(ticker=ticker)
+        print(f'Getting sector info for {ticker}: {sector}')
+        return sector

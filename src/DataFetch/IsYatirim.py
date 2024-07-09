@@ -17,7 +17,6 @@ https://www.isyatirim.com.tr/_layouts/15/Isyatirim.Website/Common/Data.aspx/Hiss
 
 INFO_PATH = Path(__file__).parents[2] / 'Data' / 'SirketBilgileri.json'
 
-# TODO: Implement this
 class IsYatirim:
 
     def __init__(self) -> None:
@@ -29,7 +28,7 @@ class IsYatirim:
     def get_info(self):
         return self.info
     
-    def getSector(self, ticker):
+    def get_sector(self, ticker):
         ticker = standardize_ticker(ticker)
         sector = [s['AS_ALT_SEKTOR_TANIMI'] for s in self.info if s['Title'] == ticker]
         if len(sector) > 0:
@@ -37,6 +36,10 @@ class IsYatirim:
         else:
             sector = 'Diğer'
         return sector
+    
+    # TODO: Add function to obtain/update the information from the website
+    def updateCompanies():
+        pass
 
     
 
