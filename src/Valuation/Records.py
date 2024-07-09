@@ -76,43 +76,6 @@ class Records():
         if save:
             self.file.save(filename=self.file_path)
 
-    # TODO: Redesign this function for proper use
-    def update_share_counts(self, all=True, save=True, intrinsic_online: bool=None):
-        if intrinsic_online is None:
-            intrinsic_online = self.online
-        # Load the sheet
-        sheet = self.file["Sheet"]
-        # Get header location, update the header if needed
-        intrinsic_header_str = 'İçsel Değer'
-        intrinsic_header_quarter_str = 'İçsel Değer (Çeyrek)'
-        intrinsic_header = self.__get_header_location(intrinsic_header_str)
-        intrinsic_header_quarter = self.__get_header_location(intrinsic_header_quarter_str)
-        ticker_header = self.__get_header_location('Hisse')
-        # Update all values on the column
-        tickers = self.__get_values(ticker_header)
-        values = self.__get_values(intrinsic_header)
-        qtr_values = self.__get_values(intrinsic_header_quarter)
-        for idx, value in enumerate(values):
-            if tickers[idx] is None or tickers[idx] == 'Total':
-                continue
-            # This happens on empty parts
-            if all or value is None:
-                try:
-                    cell_location = intrinsic_header + str(idx + 2)
-                    cell_location_qtr = intrinsic_header_quarter + str(idx + 2)
-                    self.__get_share_count(tickers[idx])
-                    intr_value = self.__get_intrinsic_value(tickers[idx], quarter=False, online=intrinsic_online)
-                    intr_value_qtr = self.__get_intrinsic_value(tickers[idx], quarter=True, online=intrinsic_online)
-                    sheet[cell_location] = intr_value
-                    sheet[cell_location_qtr] = intr_value_qtr
-                except Exception as e:
-                    if save:
-                        self.file.save(filename=self.file_path)
-                    raise e
-
-        if save:
-            self.file.save(filename=self.file_path)
-
     def update_intrinsic_values(self, all=True, quarter=False, save=True):
         intrinsic_header_str = 'İçsel Değer (Çeyrek)' if quarter else 'İçsel Değer'
         self.update_column(intrinsic_header_str, self.__get_intrinsic_value, all=all, save=save, quarter=quarter)
