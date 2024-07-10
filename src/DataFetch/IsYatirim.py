@@ -16,6 +16,7 @@ https://www.isyatirim.com.tr/_layouts/15/Isyatirim.Website/Common/Data.aspx/Hiss
 '''
 
 INFO_PATH = Path(__file__).parents[2] / 'Data' / 'SirketBilgileri.json'
+INFO_URL = 'https://www.isyatirim.com.tr/_layouts/15/Isyatirim.Website/Common/Data.aspx/SirketBilgileri'
 
 class IsYatirim:
 
@@ -37,9 +38,10 @@ class IsYatirim:
             sector = 'Diğer'
         return sector
     
-    # TODO: Add function to obtain/update the information from the website
-    def updateCompanies():
-        pass
+    def update_companies(self):
+        resp = self.r.get(INFO_URL)
+        with open(INFO_PATH, 'w', encoding='utf-8') as f:
+            f.write(resp.text)
 
     
 
