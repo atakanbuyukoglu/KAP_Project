@@ -4,7 +4,7 @@ from itertools import islice
 from .Metrics import Company
 from ..DataFetch.Helpers.RequestWrapper import Request
 from ..DataFetch.Helpers.utils import standardize_ticker
-from DataFetch.IsYatirim import IsYatirim
+from ..DataFetch.IsYatirim import IsYatirim
 from yfinance import Ticker
 import numpy as np
 
@@ -94,11 +94,10 @@ class Records():
     def update_last_quarter(self, all=True, save=True):
         self.update_column('Son Çeyrek', self.__get_last_quarter, all=all, save=save)
 
-    # TODO: Update only empty sector fields
     def update_sectors(self, all=True, save=True):
-        self.update_column('Sektör', self.__get_sector, all=all, save=save)
+        self.update_column('Sektör', self.__get_sector, all=all, overwrite=False, save=save)
 
-    def update_column(self, target_header_str, target_function, all=True, save=True,  **kwargs):
+    def update_column(self, target_header_str, target_function, all=True, save=True, overwrite=True, **kwargs):
         # Load the sheet
         sheet = self.file["Sheet"]
         # Get header location, update the header if needed
@@ -108,13 +107,19 @@ class Records():
         tickers = self.__get_values(ticker_header)
         values = self.__get_values(target_header)
         for idx, value in enumerate(values):
+            # This happens on empty parts (with no stock code)
             if tickers[idx] is None or tickers[idx] == 'Total':
                 continue
-            # This happens on empty parts
+            # Updates the value
             if all or value is None:
                 cell_location = target_header + str(idx + 2)
-                target_value = target_function(tickers[idx],  **kwargs)
-                sheet[cell_location] = target_value
+                # If the cell is not empty and overwrite is false, do not change it
+                if not overwrite and not (sheet[cell_location] is None or sheet[cell_location] == ''):
+                    pass
+                # Otherwise, update the value
+                else:
+                    target_value = target_function(tickers[idx],  **kwargs)
+                    sheet[cell_location] = target_value
                 
             print(f'{tickers[idx]} is updated for the column "{target_header_str}"')
         

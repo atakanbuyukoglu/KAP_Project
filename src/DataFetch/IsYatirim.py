@@ -31,6 +31,11 @@ class IsYatirim:
     
     def get_sector(self, ticker):
         ticker = standardize_ticker(ticker)
+        # Handle exceptions
+        if ticker == 'KRDMA':
+            ticker = 'KRDMD'
+        if ticker == 'ISATR':
+            ticker = 'ISCTR'            
         sector = [s['AS_ALT_SEKTOR_TANIMI'] for s in self.info if s['Title'] == ticker]
         if len(sector) > 0:
             sector = sector[0]

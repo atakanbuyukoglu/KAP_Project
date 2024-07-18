@@ -1,4 +1,5 @@
 from .KAP_Interface import KAPParser
+from .Is_Interface import IsParser
 from ..DataFetch.Helpers.utils import standardize_ticker, book_value_strings
 import pandas as pd
 import locale
@@ -11,6 +12,8 @@ class Company:
     def __init__(self, ticker, data_path, update=True) -> None:
         self.ticker = standardize_ticker(ticker)
         self.parser = KAPParser(data_path)
+        self.is_parser = IsParser()
+        self.sector = self.is_parser.get_sector()
 
         # Defined as 1 to 4 depending on the latest announced financials
         self.last_quarter = None
