@@ -21,18 +21,11 @@ search = KAPSearch()
 company_info = kap.get_company_info(online=True)
 companies = list(company_info.companies.keys())
 
-record_file = Records(records_path / 'Valuation_all.xlsx', initial_tickers=companies, add_tickers=False, online=False)
+record_file = Records(records_path / 'Valuation_all.xlsx', initial_tickers=companies, overwrite=False, online=False)
 
 #record_file.update_share_counts(intrinsic_online=False)
 #record_file.update()
 with keep.presenting():
-    record_file.update_sectors()
-    record_file.update_prices()
     tickers = kap.update_financials(last_date)
-    record_file.update_tickers(tickers)
-    #record_file.update_intrinsic_values()
-    #record_file.online = False
-    #record_file.update_intrinsic_values(quarter=True)
-    #record_file.update_revenue_change()
-    #record_file.update_last_quarter()
+    record_file.update_tickers(tickers, price=False)
 

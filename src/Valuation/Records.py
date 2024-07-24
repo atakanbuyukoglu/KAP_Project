@@ -2,6 +2,7 @@ from pathlib import Path
 from openpyxl import Workbook, load_workbook
 from itertools import islice
 from .Metrics import Company
+from .Valuation import Valuation
 from ..DataFetch.Helpers.RequestWrapper import Request
 from ..DataFetch.Helpers.utils import standardize_ticker
 from ..DataFetch.IsYatirim import IsYatirim
@@ -10,18 +11,20 @@ import numpy as np
 
 class Records():
     
-    def __init__(self, file_path, initial_tickers=None, add_tickers=False, online=True) -> None:
+    def __init__(self, file_path, initial_tickers=None, overwrite=False, online=True) -> None:
         self.file_path = Path(file_path)
-        if self.file_path.is_file():
+        # The default value application
+        if initial_tickers is None:
+            initial_tickers = []
+        if self.file_path.is_file() and not overwrite:
             self.file = load_workbook(filename=self.file_path)
         else:
             self.file = Workbook()
+            self.file.active.title = "Sheet"
+            self.__set_values('Hisse', initial_tickers, save=True)
             self.file.save(self.file_path)
+        
         self.tickers = initial_tickers
-
-        # Initialize the file if initial tickers are given
-        if add_tickers:
-            self.__set_values('Hisse', self.tickers, save=True)
 
         self.online = online
         self.yahoo_session = Request(sleep_time=1.0)
@@ -59,12 +62,21 @@ class Records():
             cell_location = header + str(ticker_row)
             sheet[cell_location] = self.__get_price(ticker)
         # Update intrinsic value
-        header = self.__get_header_location('İçsel Değer')
+        header = self.__get_header_location('Favök')
         cell_location = header + str(ticker_row)
-        sheet[cell_location] = self.__get_intrinsic_value(ticker)
-        header = self.__get_header_location('İçsel Değer (Çeyrek)')
+        sheet[cell_location] = self.__get_ebitda(ticker)
+        header = self.__get_header_location('Favök (Çeyrek)')
         cell_location = header + str(ticker_row)
-        sheet[cell_location] = self.__get_intrinsic_value(ticker, quarter=True, online=False)
+        sheet[cell_location] = self.__get_ebitda(ticker, quarter=True)
+        header = self.__get_header_location('Net Varlık')
+        cell_location = header + str(ticker_row)
+        sheet[cell_location] = self.__get_net_assets(ticker)
+        header = self.__get_header_location('Defter Değeri')
+        cell_location = header + str(ticker_row)
+        sheet[cell_location] = self.__get_book_value(ticker)
+        header = self.__get_header_location('Net Kar')
+        cell_location = header + str(ticker_row)
+        sheet[cell_location] = self.__get_net_profit(ticker)
         # Update revenue change
         header = self.__get_header_location('Hasılat Artışı')
         cell_location = header + str(ticker_row)
@@ -83,21 +95,21 @@ class Records():
 
     def update_intrinsic_values(self, all=True, quarter=False, save=True):
         intrinsic_header_str = 'İçsel Değer (Çeyrek)' if quarter else 'İçsel Değer'
-        self.update_column(intrinsic_header_str, self.__get_intrinsic_value, all=all, save=save, quarter=quarter)
+        self.__update_column(intrinsic_header_str, self.__get_intrinsic_value, all=all, save=save, quarter=quarter)
 
     def update_prices(self, all=True, save=True):
-        self.update_column('Fiyat', self.__get_price, all=all, save=save)
+        self.__update_column('Fiyat', self.__get_price, all=all, save=save)
 
     def update_revenue_change(self, all=True, save=True):
-        self.update_column('Hasılat Artışı', self.__get_revenue_change, all=all, save=save)
+        self.__update_column('Hasılat Artışı', self.__get_revenue_change, all=all, save=save)
 
     def update_last_quarter(self, all=True, save=True):
-        self.update_column('Son Çeyrek', self.__get_last_quarter, all=all, save=save)
+        self.__update_column('Son Çeyrek', self.__get_last_quarter, all=all, save=save)
 
     def update_sectors(self, all=True, save=True):
-        self.update_column('Sektör', self.__get_sector, all=all, overwrite=False, save=save)
+        self.__update_column('Sektör', self.__get_sector, all=all, overwrite=False, save=save)
 
-    def update_column(self, target_header_str, target_function, all=True, save=True, overwrite=True, **kwargs):
+    def __update_column(self, target_header_str, target_function, all=True, save=True, overwrite=True, **kwargs):
         # Load the sheet
         sheet = self.file["Sheet"]
         # Get header location, update the header if needed
@@ -113,13 +125,12 @@ class Records():
             # Updates the value
             if all or value is None:
                 cell_location = target_header + str(idx + 2)
-                # If the cell is not empty and overwrite is false, do not change it
-                if not overwrite and not (sheet[cell_location] is None or sheet[cell_location] == ''):
-                    pass
-                # Otherwise, update the value
-                else:
+                # If the cell is not empty or overwrite is true, change it
+                if overwrite or sheet[cell_location].value is None or sheet[cell_location].value == '':
                     target_value = target_function(tickers[idx],  **kwargs)
                     sheet[cell_location] = target_value
+                else:
+                    print(f'Sheet cell location: {sheet[cell_location].value}')
                 
             print(f'{tickers[idx]} is updated for the column "{target_header_str}"')
         
@@ -213,3 +224,23 @@ class Records():
         sector = is_yat.get_sector(ticker=ticker)
         print(f'Getting sector info for {ticker}: {sector}')
         return sector
+    
+    def __get_ebitda(self, ticker: str, quarter=False):
+        valuation = Valuation(ticker, self.file_path.parents[1])
+        print(f'Getting ebitda for {ticker}, quarter={quarter}')
+        return valuation.get_ebitda(quarter=quarter)
+    
+    def __get_net_assets(self, ticker: str):
+        valuation = Valuation(ticker, self.file_path.parents[1])
+        print(f'Getting net assets for {ticker}')
+        return valuation.get_net_assets()
+
+    def __get_book_value(self, ticker: str):
+        valuation = Valuation(ticker, self.file_path.parents[1])
+        print(f'Getting net assets for {ticker}')
+        return valuation.get_book_value()
+
+    def __get_net_profit(self, ticker: str):
+        valuation = Valuation(ticker, self.file_path.parents[1])
+        print(f'Getting net profit for {ticker}')
+        return valuation.get_net_profit()

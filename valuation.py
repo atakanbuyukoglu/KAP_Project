@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     company_name = args.company_name
     if company_name is None:
-        company_name = 'bieny'
+        company_name = 'tera'
 
     company = Company(company_name, data_path, update=False)
     multiplier = 10

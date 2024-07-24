@@ -40,7 +40,7 @@ class IsYatirim:
         if len(sector) > 0:
             sector = sector[0]
         else:
-            sector = 'Diğer'
+            sector = 'Bilinmeyen'
         return sector
     
     def update_companies(self):

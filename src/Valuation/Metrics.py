@@ -13,7 +13,7 @@ class Company:
         self.ticker = standardize_ticker(ticker)
         self.parser = KAPParser(data_path)
         self.is_parser = IsParser()
-        self.sector = self.is_parser.get_sector()
+        self.sector = self.is_parser.get_sector(ticker)
 
         # Defined as 1 to 4 depending on the latest announced financials
         self.last_quarter = None
@@ -209,13 +209,19 @@ class Company:
     def get_gross_profit(self, quarter=False):
         return self.__get_income_statement_value('BRÜT KAR (ZARAR)', quarter=quarter)
     def get_operating_profit(self, quarter=False):
-        return self.__get_income_statement_value('ESAS FAALİYET KARI (ZARARI)', quarter=quarter)
+        try:
+            return self.__get_income_statement_value('ESAS FAALİYET KARI (ZARARI)', quarter=quarter)
+        except IndexError:
+            return 0
     def get_other_operating_income(self, quarter=False):
-        return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Gelirler', quarter=quarter)
+        try:
+            return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Gelirler', quarter=quarter)
+        except IndexError:
+            return 0
     def get_other_operating_expense(self, quarter=False):
         return self.__get_income_statement_value('Esas Faaliyetlerden Diğer Giderler', quarter=quarter)
     
-    def __get_income_statement_value(self, value_name, quarter=False, priority=0):
+    def __get_income_statement_value2(self, value_name, quarter=False, priority=0):
         value = Company.__get_statement_value(self.income_statement, value_name, priority)
         # If quarterly data is needed
         if quarter:
@@ -247,11 +253,17 @@ class Company:
                 else:
                     return value.iloc[0] * 4 / self.last_quarter
 
+    def __get_income_statement_value(self, value_name, quarter=False, priority=0):
+        try:
+            return self.__get_income_statement_value2(value_name, quarter, priority)
+        except (IndexError, TypeError):
+            return 0
+    
     ### Values from the cash flow statement ###
     def get_amortization(self, quarter=False):
-        return self.__get_cash_flow_statement_value('Amortisman ve İtfa Gideri İle İlgili Düzeltmeler', quarter=quarter)
+            return self.__get_cash_flow_statement_value('Amortisman ve İtfa Gideri İle İlgili Düzeltmeler', quarter=quarter)
     
-    def __get_cash_flow_statement_value(self, value_name, quarter=False, priority=0):
+    def __get_cash_flow_statement_value2(self, value_name, quarter=False, priority=0):
         value = Company.__get_statement_value(self.cash_flow_statement, value_name, priority)
         # If quarterly data is needed
         if quarter:
@@ -278,7 +290,13 @@ class Company:
                 # Alternative solution for the case without yearly financials
                 else:
                     return value.iloc[0] * 4 / self.last_quarter
-                
+
+    def __get_cash_flow_statement_value(self, value_name, quarter=False, priority=0):
+        try:
+            return self.__get_cash_flow_statement_value2(value_name, quarter, priority)
+        except (IndexError, TypeError):
+            return 0
+
     ### Values calculated using the data from the tables
     def get_controlling_equity_ratio(self):
         equity = self.get_equity()
